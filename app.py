@@ -170,4 +170,87 @@ if not prices_df.empty:
         x=history_df.index, y=history_df['Total'],
         mode='lines', name='Valor Cartera',
         line=dict(color='#38bdf8', width=2), # Azul celeste claro
-        fill='tozeroy', 
+        fill='tozeroy', fillcolor='rgba(56, 189, 248, 0.1)' # Relleno suave
+    ), row=1, col=1)
+    
+    # Gráfico 2: Drawdown (Abajo)
+    fig.add_trace(go.Scatter(
+        x=dd_series.index, y=dd_series,
+        mode='lines', name='Drawdown',
+        line=dict(color='#f87171', width=1), # Rojo
+        fill='tozeroy', fillcolor='rgba(248, 113, 113, 0.2)'
+    ), row=2, col=1)
+    
+    # Estilizado del Gráfico
+    fig.update_layout(
+        height=500,
+        paper_bgcolor='rgba(0,0,0,0)', # Transparente para que tome el fondo de la app
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#cbd5e0'),
+        showlegend=False,
+        margin=dict(l=10, r=10, t=10, b=10),
+        hovermode="x unified"
+    )
+    fig.update_yaxes(title_text="Valor (€)", row=1, col=1, gridcolor='#334155')
+    fig.update_yaxes(title_text="Caída %", row=2, col=1, gridcolor='#334155', tickformat='.0%')
+    fig.update_xaxes(gridcolor='#334155')
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # --- TABLA DE REBALANCEO INTELIGENTE ---
+    st.markdown("### ⚖️ Análisis de Rebalanceo (Bandas 10%)")
+    
+    rebal_rows = []
+    
+    for t in tickers:
+        target = PORTFOLIO_CONFIG[t]['target']
+        val = portfolio_shares[t] * latest_prices[t]
+        actual_w = val / current_market_value
+        
+        # CÁLCULO DE BANDAS
+        upper_limit = target * (1 + TOLERANCE) # Ej: 17.1% * 1.10 = 18.81%
+        lower_limit = target * (1 - TOLERANCE) # Ej: 17.1% * 0.90 = 15.39%
+        
+        action = "✅ MANTENER"
+        detail = "En rango"
+        
+        if actual_w > upper_limit:
+            diff = val - (current_market_value * target)
+            action = "🔴 VENDER"
+            detail = f"Sobrepoderado. Vender {diff:.0f} €"
+        elif actual_w < lower_limit:
+            diff = (current_market_value * target) - val
+            action = "🔵 COMPRAR"
+            detail = f"Infraponderado. Comprar {diff:.0f} €"
+            
+        rebal_rows.append({
+            "Ticker": t,
+            "Activo": PORTFOLIO_CONFIG[t]['name'],
+            "Precio": f"{latest_prices[t]:.2f} €",
+            "Peso Objetivo": f"{target:.1%}",
+            "Peso Actual": f"{actual_w:.2%}",
+            "Rango Permitido": f"{lower_limit:.1%} - {upper_limit:.1%}", # CLAVE PARA ENTENDER
+            "Acción": action,
+            "Detalle": detail
+        })
+        
+    df_rebal = pd.DataFrame(rebal_rows)
+    
+    # Función para colorear la fila entera o la celda de acción
+    def color_actions(val):
+        if "VENDER" in val: return 'color: #fca5a5; font-weight: bold' # Rojo claro
+        if "COMPRAR" in val: return 'color: #93c5fd; font-weight: bold' # Azul claro
+        return 'color: #86efac' # Verde claro
+        
+    st.dataframe(
+        df_rebal.style.applymap(color_actions, subset=['Acción']),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Ticker": st.column_config.TextColumn(width="small"),
+            "Rango Permitido": st.column_config.TextColumn(help="Si el Peso Actual sale de este rango, se dispara la alerta."),
+        }
+    )
+
+else:
+    st.error("⚠️ No se pudieron cargar los datos. Por favor espera unos instantes o recarga la página.")
