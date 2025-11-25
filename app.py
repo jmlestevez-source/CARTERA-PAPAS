@@ -6,49 +6,41 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, date, timedelta
 
-# --- 1. CONFIGURACIÓN VISUAL Y ESTILOS ---
+# --- 1. CONFIGURACIÓN VISUAL Y CSS AVANZADO ---
 st.set_page_config(page_title="Cartera Permanente Pro", layout="wide", page_icon="🛡️")
 
-# CSS para mejorar legibilidad y contraste (Estilo "Slate Blue")
 st.markdown("""
 <style>
-    /* Fondo App */
-    .stApp {
-        background-color: #1a202c; /* Gris muy oscuro azulado */
+    /* Fondo General */
+    .stApp { background-color: #1a202c; }
+    
+    /* Forzar anchura mínima de la Sidebar */
+    section[data-testid="stSidebar"] {
+        min-width: 400px !important;
+        width: 400px !important;
     }
     
-    /* Textos */
+    /* Tipografía y Colores */
     h1, h2, h3 { color: #e2e8f0 !important; font-family: 'Segoe UI', sans-serif; font-weight: 700; }
-    p, div, label, span { color: #cbd5e0 !important; }
+    p, div, label, span, li { color: #cbd5e0 !important; }
     
-    /* Métricas (Tarjetas) */
+    /* Tarjetas de Métricas */
     div[data-testid="stMetric"] {
         background-color: #2d3748;
-        border-left: 5px solid #3182ce; /* Borde azul */
-        border-radius: 5px;
+        border-left: 4px solid #3182ce;
+        border-radius: 6px;
         padding: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
-    div[data-testid="stMetricValue"] {
-        color: #fff !important;
-        font-size: 1.6rem !important;
-    }
-    div[data-testid="stMetricLabel"] {
-        color: #a0aec0 !important;
-        font-weight: 600;
-    }
+    div[data-testid="stMetricValue"] { color: #fff !important; font-size: 1.5rem !important; }
+    div[data-testid="stMetricLabel"] { color: #a0aec0 !important; font-size: 0.9rem !important; }
     
-    /* Sidebar */
-    section[data-testid="stSidebar"] {
-        background-color: #171923;
-    }
-    
-    /* Tablas */
+    /* Tablas más legibles */
     .stDataFrame { border: 1px solid #4a5568; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. CONFIGURACIÓN DE DATOS ---
+# --- 2. DATOS MAESTROS ---
 PORTFOLIO_CONFIG = {
     'DJMC.AS': {'name': 'iShares Euro Stoxx Mid', 'target': 0.30},
     'EXH9.DE': {'name': 'iShares Stoxx 600 Util', 'target': 0.129},
@@ -57,247 +49,239 @@ PORTFOLIO_CONFIG = {
     'SYBJ.DE': {'name': 'SPDR Euro High Yield', 'target': 0.10}
 }
 
-# Datos de tu Backtest (Benchmark Histórico)
 BENCHMARK_STATS = {
-    "CAGR": "6.77%",
-    "Sharpe": "0.572",
-    "Volatilidad": "8.77%",
-    "Max DD": "-21.19%"
+    "CAGR": "6.77%", "Sharpe": "0.572", "Volatilidad": "8.77%", "Max DD": "-21.19%"
 }
 
-# --- 3. FUNCIONES ROBUSTAS ---
-def get_market_data(tickers, start_date):
-    # Descargamos un poco antes para asegurar datos en la fecha de inicio
-    download_start = start_date - timedelta(days=7)
+# --- 3. FUNCIONES ---
+@st.cache_data(ttl=3600, show_spinner=False) 
+def get_market_data_cached(tickers):
+    start_date = datetime.now() - timedelta(days=365*5)
     try:
-        data = yf.download(tickers, start=download_start, progress=False, auto_adjust=True)
-        
-        # Manejo de MultiIndex (Problema común de yfinance reciente)
+        data = yf.download(tickers, start=start_date, progress=False, auto_adjust=True)
         if isinstance(data.columns, pd.MultiIndex):
-            # Intentamos extraer 'Close', si no existe, usamos el nivel 0
             if 'Close' in data.columns.get_level_values(0):
                 df = data['Close']
             else:
-                df = data.iloc[:, :len(tickers)] # Fallback brusco
+                df = data.iloc[:, :len(tickers)]
         elif 'Close' in data.columns:
             df = data['Close']
         else:
-            df = data # Si ya viene plano
-            
+            df = data
         return df
-    except Exception as e:
-        st.error(f"Error descargando datos: {e}")
+    except Exception:
         return pd.DataFrame()
 
 def calculate_metrics(series, capital_inicial):
-    if series.empty: return 0, 0, 0, pd.Series()
+    if series.empty or len(series) < 2: 
+        return 0.0, 0.0, 0.0, pd.Series(0, index=series.index)
     
-    # Retornos diarios
-    ret = series.pct_change().dropna()
+    ret = series.pct_change().fillna(0)
     
-    # CAGR (Basado en fecha inicio seleccionada)
+    # CAGR (Desde fecha inicio)
     days = (series.index[-1] - series.index[0]).days
+    current_val = series.iloc[-1]
+    
     if days > 0:
-        years = days / 365.25
-        total_ret = (series.iloc[-1] / capital_inicial) - 1
-        cagr = (1 + total_ret)**(1/years) - 1
+        total_ret = (current_val / capital_inicial) - 1
+        cagr = (1 + total_ret)**(365.25/days) - 1 if total_ret > -0.9 else 0
     else:
-        cagr = 0
+        cagr = 0.0
     
     # Drawdown
     rolling_max = series.cummax()
     dd = (series - rolling_max) / rolling_max
     max_dd = dd.min()
     
-    # Sharpe (RF 3%)
+    # Sharpe (Anualizado)
     rf = 0.03
     if ret.std() > 0:
         excess_ret = ret - (rf/252)
         sharpe = np.sqrt(252) * excess_ret.mean() / ret.std()
     else:
-        sharpe = 0
+        sharpe = 0.0
         
     return cagr, max_dd, sharpe, dd
 
-# --- 4. SIDEBAR (CONFIG Y COMPARATIVA) ---
+# --- 4. SIDEBAR (MÁS ANCHO AHORA) ---
 with st.sidebar:
     st.header("⚙️ Configuración")
     capital = st.number_input("Capital Inicial (€)", value=13000, step=500)
-    # Fecha por defecto: 1 año atrás
-    default_start = date.today() - timedelta(days=365)
+    
+    # Fecha por defecto
+    default_start = date(date.today().year - 1, 1, 1)
     start_date = st.date_input("Fecha Inicio Inversión", value=default_start)
     
+    if st.button("🔄 Recargar Datos"):
+        st.cache_data.clear()
+        st.rerun()
+    
     st.markdown("---")
-    st.header("📜 Benchmark Histórico")
-    st.caption("Referencia de tu Backtest (Bandas ±10%)")
+    st.subheader("📜 Benchmark Histórico (Teórico)")
     
-    # Mostrar tus métricas estáticas para comparar
-    c1, c2 = st.columns(2)
-    c1.metric("CAGR Teórico", BENCHMARK_STATS["CAGR"])
-    c1.metric("Max DD Teórico", BENCHMARK_STATS["Max DD"])
-    c2.metric("Sharpe Teórico", BENCHMARK_STATS["Sharpe"])
-    c2.metric("Volatilidad", BENCHMARK_STATS["Volatilidad"])
+    # Usamos columnas dentro del sidebar ancho para organizar mejor
+    col_b1, col_b2 = st.columns(2)
+    col_b1.metric("CAGR", BENCHMARK_STATS["CAGR"])
+    col_b1.metric("Max DD", BENCHMARK_STATS["Max DD"])
+    col_b2.metric("Sharpe", BENCHMARK_STATS["Sharpe"])
+    col_b2.metric("Volat.", BENCHMARK_STATS["Volatilidad"])
     
-    st.info("👆 Estos datos son fijos de tu estudio previo. A la derecha verás los datos reales de tu periodo seleccionado.")
+    st.caption("Nota: Estos datos son de tu estudio previo (Backtest).")
 
 # --- 5. LÓGICA PRINCIPAL ---
-st.title(f"Dashboard de Cartera")
-st.markdown(f"Periodo analizado: **{start_date.strftime('%d/%m/%Y')}** hasta **Hoy**")
+st.title("Dashboard de Cartera")
 
 tickers = list(PORTFOLIO_CONFIG.keys())
-full_df = get_market_data(tickers, start_date)
+with st.spinner('Analizando mercado...'):
+    full_df = get_market_data_cached(tickers)
 
-# Filtrar estrictamente desde la fecha seleccionada
 if not full_df.empty:
-    # Aseguramos que el índice es datetime
     full_df.index = pd.to_datetime(full_df.index)
-    # Recortamos los datos para empezar exactamente en o después de la fecha elegida
+    # Filtrar desde fecha seleccionada
     df_analysis = full_df[full_df.index >= pd.to_datetime(start_date)].copy()
+    df_analysis = df_analysis.ffill().dropna()
+
+    # Verificación: Si la fecha es HOY o FUTURA, o no hay datos aún
+    if len(df_analysis) == 0:
+        st.info("📅 La fecha seleccionada es hoy o no hay datos de mercado aún. Mostrando estado inicial.")
+        # Simulamos un dataframe con precios de cierre de ayer para poder mostrar la tabla
+        last_available = full_df.iloc[-1]
+        df_analysis = pd.DataFrame([last_available], index=[pd.to_datetime(start_date)])
+
+    # --- MOTOR DE COMPRA DE ACCIONES (ENTERAS) ---
+    initial_prices = df_analysis.iloc[0]
+    latest_prices = df_analysis.iloc[-1]
     
-    # Rellenar huecos (festivos)
-    df_analysis = df_analysis.fillna(method='ffill').dropna()
+    holdings = []
+    invested_cash = 0
+    
+    # Serie temporal
+    portfolio_series = pd.DataFrame(index=df_analysis.index)
+    portfolio_series['Total'] = 0
+    
+    # Cálculo de Acciones Enteras
+    portfolio_shares = {}
+    
+    for t in tickers:
+        target_w = PORTFOLIO_CONFIG[t]['target']
+        budget_for_asset = capital * target_w
+        price_at_start = initial_prices[t]
+        
+        # MAGIA: División entera (Floor) para obtener acciones completas
+        num_shares = int(budget_for_asset // price_at_start)
+        portfolio_shares[t] = num_shares
+        
+        cost_basis = num_shares * price_at_start
+        invested_cash += cost_basis
+        
+        # Construir histórico
+        portfolio_series['Total'] += df_analysis[t] * num_shares
+        
+    # Cash sobrante (Liquidez)
+    cash_leftover = capital - invested_cash
+    # Sumamos el cash al valor total de la cartera (asumimos que se queda en cuenta)
+    portfolio_series['Total'] += cash_leftover
+    
+    current_total_value = portfolio_series['Total'].iloc[-1]
+    
+    # --- MÉTRICAS ---
+    cagr_real, max_dd_real, sharpe_real, dd_series = calculate_metrics(portfolio_series['Total'], capital)
+    
+    abs_return = current_total_value - capital
+    pct_return = (current_total_value / capital) - 1
 
-    if len(df_analysis) > 0:
-        # 1. Motor de la Cartera (Simulación desde cero)
-        initial_prices = df_analysis.iloc[0]
-        latest_prices = df_analysis.iloc[-1]
-        
-        # Calculamos cuántas acciones hubiéramos comprado ese día con el capital
-        shares = {}
-        current_value = 0
-        
-        # Serie temporal del valor total
-        portfolio_series = pd.DataFrame(index=df_analysis.index)
-        portfolio_series['Total'] = 0
-        
-        for t in tickers:
-            target_w = PORTFOLIO_CONFIG[t]['target']
-            # Acciones = (Capital * Peso) / Precio Día 1
-            num_shares = (capital * target_w) / initial_prices[t]
-            shares[t] = num_shares
-            
-            # Sumar a la serie temporal
-            portfolio_series['Total'] += df_analysis[t] * num_shares
-            
-            # Valor actual hoy
-            current_value += num_shares * latest_prices[t]
+    # --- VISUALIZACIÓN ---
+    
+    # Fila de KPIs
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Valor Actual", f"{current_total_value:,.0f} €", f"{abs_return:+,.0f} €")
+    k2.metric("Rentabilidad", f"{pct_return:+.2%}", f"CAGR: {cagr_real:.2%}")
+    k3.metric("Drawdown", f"{dd_series.iloc[-1]:.2%}", f"Max: {max_dd_real:.2%}", delta_color="inverse")
+    k4.metric("Ratio Sharpe", f"{sharpe_real:.2f}")
+    
+    st.markdown("---")
 
-        # 2. Calcular Métricas Reales
-        cagr_real, max_dd_real, sharpe_real, dd_series = calculate_metrics(portfolio_series['Total'], capital)
-        
-        # 3. KPIs Superiores
-        k1, k2, k3, k4 = st.columns(4)
-        
-        diff_eur = current_value - capital
-        diff_pct = (current_value / capital) - 1
-        
-        k1.metric("Valor Actual", f"{current_value:,.0f} €", f"{diff_eur:+,.0f} €")
-        k2.metric("Rentabilidad Total", f"{diff_pct:+.2%}", f"CAGR: {cagr_real:.2%}")
-        k3.metric("Drawdown Actual", f"{dd_series.iloc[-1]:.2%}", f"Max: {max_dd_real:.2%}", delta_color="inverse")
-        k4.metric("Ratio Sharpe Real", f"{sharpe_real:.2f}")
+    # Gráficos
+    col_graph, col_table = st.columns([2, 1])
+    
+    with col_graph:
+        st.subheader("📈 Evolución")
+        if len(df_analysis) > 1:
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.05)
+            fig.add_trace(go.Scatter(x=portfolio_series.index, y=portfolio_series['Total'], name="Valor", 
+                                     line=dict(color='#63b3ed', width=2), fill='tozeroy', fillcolor='rgba(99,179,237,0.1)'), row=1, col=1)
+            fig.add_trace(go.Scatter(x=dd_series.index, y=dd_series, name="DD", 
+                                     line=dict(color='#fc8181', width=1), fill='tozeroy', fillcolor='rgba(252,129,129,0.2)'), row=2, col=1)
+            fig.update_layout(height=450, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+                              showlegend=False, hovermode="x unified", margin=dict(l=0,r=0,t=0,b=0), font=dict(color='#cbd5e0'))
+            fig.update_yaxes(gridcolor='#2d3748', row=1, col=1)
+            fig.update_yaxes(tickformat=".0%", gridcolor='#2d3748', row=2, col=1)
+            fig.update_xaxes(gridcolor='#2d3748')
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("El gráfico aparecerá mañana, cuando haya datos de variación.")
 
-        # 4. Gráficos (Estilo Limpio)
-        st.markdown("### 📈 Evolución y Riesgo")
-        
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                            vertical_spacing=0.05, row_heights=[0.7, 0.3])
-        
-        # Curva de Valor
-        fig.add_trace(go.Scatter(
-            x=portfolio_series.index, y=portfolio_series['Total'],
-            mode='lines', name='Valor Cartera',
-            line=dict(color='#63b3ed', width=2), # Azul claro
-            fill='tozeroy', fillcolor='rgba(99, 179, 237, 0.1)'
-        ), row=1, col=1)
-        
-        # Curva Drawdown
-        fig.add_trace(go.Scatter(
-            x=dd_series.index, y=dd_series,
-            mode='lines', name='Drawdown',
-            line=dict(color='#fc8181', width=1.5), # Rojo claro
-            fill='tozeroy', fillcolor='rgba(252, 129, 129, 0.2)'
-        ), row=2, col=1)
-        
-        fig.update_layout(
-            height=500,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            hovermode="x unified",
-            showlegend=False,
-            font=dict(color="#cbd5e0"),
-            margin=dict(l=0, r=0, t=0, b=0)
-        )
-        fig.update_yaxes(gridcolor='#2d3748', title="Valor (€)", row=1, col=1)
-        fig.update_yaxes(gridcolor='#2d3748', title="Caída %", tickformat=".0%", row=2, col=1)
-        fig.update_xaxes(gridcolor='#2d3748')
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 5. Tabla de Rebalanceo (ABSOLUTO)
-        st.markdown("### ⚖️ Control de Bandas (Absoluto ±10%)")
-        st.caption("Las bandas son puntos porcentuales absolutos sobre el objetivo (Ej: 30% ±10% = Rango 20% - 40%)")
+    with col_table:
+        st.subheader("⚖️ Control de Bandas (Abs ±10%)")
         
         rebal_data = []
-        BAND_ABS = 0.10 # 10% Absoluto
+        BAND_ABS = 0.10
         
         for t in tickers:
             target = PORTFOLIO_CONFIG[t]['target']
-            val_actual = shares[t] * latest_prices[t]
-            weight_actual = val_actual / current_value
+            n_shares = portfolio_shares[t]
+            val_act = n_shares * latest_prices[t]
             
-            # LOGICA ABSOLUTA
-            min_w = max(0, target - BAND_ABS) # No bajar de 0
+            # Peso Real sobre el TOTAL (Incluyendo Cash)
+            w_real = val_act / current_total_value
+            
+            min_w = max(0, target - BAND_ABS)
             max_w = target + BAND_ABS
             
-            status = "✅ EN RANGO"
-            color_status = "green"
-            op = "-"
+            status = "✅ MANTENER"
             
-            if weight_actual > max_w:
+            if w_real > max_w:
                 status = "🔴 VENDER"
-                color_status = "red"
-                # Cuanto sobra para volver al target
-                surplus = val_actual - (current_value * target) 
-                op = f"Vender {surplus:,.0f} €"
-            elif weight_actual < min_w:
+                surplus = val_act - (current_total_value * target)
+                op_txt = f"Vender {surplus:.0f}€"
+            elif w_real < min_w:
                 status = "🔵 COMPRAR"
-                color_status = "blue"
-                # Cuanto falta para volver al target
-                deficit = (current_value * target) - val_actual
-                op = f"Comprar {deficit:,.0f} €"
+                deficit = (current_total_value * target) - val_act
+                op_txt = f"Comprar {deficit:.0f}€"
+            else:
+                op_txt = "-"
                 
             rebal_data.append({
-                "Activo": PORTFOLIO_CONFIG[t]['name'],
-                "Precio": f"{latest_prices[t]:.2f} €",
-                "Peso Objetivo": target,
-                "Banda Mín": min_w,
-                "Peso Actual": weight_actual,
-                "Banda Máx": max_w,
-                "Acción": status,
-                "Operación Sugerida": op
+                "Ticker": t,
+                "Acciones": n_shares,
+                "Precio": f"{latest_prices[t]:.2f}€",
+                "Valor": f"{val_act:,.0f}€",
+                "Peso": f"{w_real:.1%}",
+                "Estado": status
             })
             
         df_rb = pd.DataFrame(rebal_data)
         
-        # Estilizar Tabla
-        def color_rows(val):
-            if "VENDER" in val: color = "#feb2b2" # Rojo pastel
-            elif "COMPRAR" in val: color = "#90cdf4" # Azul pastel
-            else: color = "#9ae6b4" # Verde pastel
-            return f'color: black; background-color: {color}; font-weight: bold; border-radius: 4px; padding: 4px;'
-
+        def style_rebal(v):
+            if "VENDER" in v: return 'color: #feb2b2; font-weight: bold;'
+            if "COMPRAR" in v: return 'color: #90cdf4; font-weight: bold;'
+            return 'color: #68d391;'
+            
         st.dataframe(
-            df_rb.style
-            .format({
-                "Peso Objetivo": "{:.1%}", "Peso Actual": "{:.2%}", 
-                "Banda Mín": "{:.0%}", "Banda Máx": "{:.0%}"
-            })
-            .applymap(color_rows, subset=['Acción']),
+            df_rb.style.applymap(style_rebal, subset=['Estado']),
             use_container_width=True,
-            height=300
+            hide_index=True,
+            column_config={
+                "Acciones": st.column_config.NumberColumn(format="%d"),
+            }
         )
         
-    else:
-        st.warning("⚠️ Datos descargados pero vacíos para el rango de fechas seleccionado. Intenta ampliar la fecha de inicio un par de días.")
+        st.markdown(f"""
+        <div style="background-color:#2d3748; padding:10px; border-radius:5px; margin-top:10px;">
+            <span style="color:#a0aec0; font-size:0.9rem;">Liquidez (Cash sobrante):</span>
+            <span style="color:#fff; font-weight:bold; float:right;">{cash_leftover:.2f} €</span>
+        </div>
+        """, unsafe_allow_html=True)
+
 else:
-    st.error("❌ Error crítico descargando datos. Yahoo Finance puede estar bloqueando las peticiones temporalmente o los Tickers son incorrectos.")
+    st.error("⚠️ Error de conexión con Yahoo Finance. Espera unos minutos.")
