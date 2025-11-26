@@ -6,104 +6,114 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, date, timedelta
 
-# --- 1. CONFIGURACIÓN VISUAL Y CSS QUIRÚRGICO ---
+# --- 1. CONFIGURACIÓN VISUAL (ESTILO CLARO/PROFESIONAL) ---
 st.set_page_config(page_title="Cartera Permanente Pro", layout="wide", page_icon="🛡️")
 
 st.markdown("""
 <style>
     /* =============================================
-       1. FONDO Y TEXTOS GENERALES (GLOBAL)
+       1. PANEL PRINCIPAL (FONDO CLARO)
        ============================================= */
     .stApp { 
-        background-color: #0f172a !important; /* Azul noche profundo */
+        background-color: #f8fafc !important; /* Gris Perla muy suave */
     }
     
-    /* Forzar BLANCO en todos los títulos H1, H2, H3 del panel principal */
+    /* Títulos principales en COLOR OSCURO para que se lean bien */
     .main h1, .main h2, .main h3 {
-        color: #ffffff !important;
+        color: #1e293b !important; /* Gris azulado oscuro */
         font-family: 'Segoe UI', sans-serif;
         font-weight: 800;
     }
+    
+    /* Texto normal en oscuro */
+    .main p, .main li, .main div {
+        color: #334155;
+    }
 
     /* =============================================
-       2. BARRA LATERAL (SIDEBAR) - ESTILO ESPECÍFICO
+       2. BARRA LATERAL (SIDEBAR) - OSCURA
        ============================================= */
     section[data-testid="stSidebar"] {
         min-width: 350px !important;
         width: 350px !important;
-        background-color: #1e293b !important; /* Gris azulado */
+        background-color: #0f172a !important; /* Azul Noche */
     }
     
-    /* Textos generales del Sidebar */
+    /* Textos del Sidebar en BLANCO */
+    section[data-testid="stSidebar"] h1, 
+    section[data-testid="stSidebar"] h2, 
+    section[data-testid="stSidebar"] h3, 
     section[data-testid="stSidebar"] label, 
     section[data-testid="stSidebar"] span, 
-    section[data-testid="stSidebar"] p, 
-    section[data-testid="stSidebar"] h1,
-    section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3 {
-        color: #f8fafc !important; /* Blanco */
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] div {
+        color: #f8fafc !important;
     }
 
-    /* INPUTS DEL SIDEBAR (Cajas de texto y fecha) */
-    /* Fondo de la caja */
+    /* Inputs del Sidebar (Fondo oscuro, texto blanco) */
     div[data-baseweb="input"], div[data-baseweb="base-input"] {
-        background-color: #334155 !important; 
+        background-color: #1e293b !important; 
         border: 1px solid #475569 !important;
-        border-radius: 4px !important;
     }
-    /* Texto dentro de la caja */
     input[class*="st-"] {
         color: #ffffff !important;
     }
-    /* Iconos de calendario/flechas */
     div[data-baseweb="select"] svg, div[data-testid="stDateInput"] svg {
         fill: white !important;
     }
     
-    /* BOTÓN RECARGAR */
+    /* Botón Recargar */
     section[data-testid="stSidebar"] button {
-        background-color: #3b82f6 !important;
+        background-color: #2563eb !important; /* Azul fuerte */
         color: white !important;
+        font-weight: bold;
         border: none !important;
     }
 
-    /* MÉTRICAS PEQUEÑAS (Benchmark) DEL SIDEBAR */
-    section[data-testid="stSidebar"] div[data-testid="stMetricValue"] div {
-        font-size: 1.4rem !important; /* Tamaño contenido */
-        color: #ffffff !important;
+    /* =============================================
+       3. TARJETAS DE MÉTRICAS (ESTILO BANCA)
+       ============================================= */
+    section[data-testid="stMain"] div[data-testid="stMetric"] {
+        background-color: #ffffff !important; /* Blanco Puro */
+        border: 1px solid #e2e8f0;
+        border-left: 6px solid #2563eb; /* Borde Azul */
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    /* VALOR PRINCIPAL (Grande y Oscuro) */
+    section[data-testid="stMain"] div[data-testid="stMetricValue"] div {
+        font-size: 2.4rem !important; 
+        color: #0f172a !important; /* Casi negro */
+        font-weight: 800 !important;
+    }
+
+    /* ETIQUETA SUPERIOR (Ej: Valor Actual) */
+    section[data-testid="stMain"] div[data-testid="stMetricLabel"] p {
+        font-size: 1.1rem !important;
+        color: #64748b !important; /* Gris medio */
+        font-weight: 600 !important;
+    }
+    
+    /* --- AUMENTO DE TAMAÑO PARA DELTAS (Ganancia/Pérdida y Drawdown) --- */
+    section[data-testid="stMain"] div[data-testid="stMetricDelta"] div {
+        font-size: 1.3rem !important; /* AUMENTADO (Antes era pequeño) */
+        font-weight: 700 !important;
+    }
+    
+    /* Ajuste específico para el icono de flecha */
+    section[data-testid="stMain"] div[data-testid="stMetricDelta"] svg {
+        transform: scale(1.3);
+        margin-right: 5px;
     }
 
     /* =============================================
-       3. DASHBOARD PRINCIPAL - ESTILO ESPECÍFICO
+       4. TABLAS Y GRÁFICOS
        ============================================= */
-       
-    /* TARJETAS DE MÉTRICAS (Las cajas grandes) */
-    section[data-testid="stMain"] div[data-testid="stMetric"] {
-        background-color: #334155 !important; /* Fondo gris medio para contraste */
-        border: 1px solid #475569;
-        border-left: 6px solid #3b82f6; /* Borde azul */
-        border-radius: 8px;
-        padding: 15px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    .stDataFrame { 
+        border: 1px solid #cbd5e1; 
     }
-
-    /* VALORES GIGANTES (Ej: 13,000 €) */
-    section[data-testid="stMain"] div[data-testid="stMetricValue"] div {
-        font-size: 2.4rem !important; 
-        color: #ffffff !important; /* BLANCO PURO FORZADO */
-        font-weight: 800 !important;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    }
-
-    /* ETIQUETAS DE TARJETAS (Ej: Valor Actual) */
-    section[data-testid="stMain"] div[data-testid="stMetricLabel"] p {
-        font-size: 1.1rem !important;
-        color: #e2e8f0 !important; /* Blanco hueso */
-        font-weight: 600 !important;
-    }
-
-    /* TABLAS */
-    .stDataFrame { border: 1px solid #475569; }
     
 </style>
 """, unsafe_allow_html=True)
@@ -191,7 +201,7 @@ with st.sidebar:
 st.title("Dashboard de Cartera")
 
 tickers = list(PORTFOLIO_CONFIG.keys())
-with st.spinner('Obteniendo datos...'):
+with st.spinner('Actualizando precios...'):
     full_df = get_market_data_cached(tickers)
 
 if not full_df.empty:
@@ -262,31 +272,33 @@ if not full_df.empty:
             
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.05)
             
+            # Grafico Valor (Azul profesional)
             fig.add_trace(go.Scatter(
                 x=plot_series_val.index, y=plot_series_val['Total'], 
                 name="Valor", mode='lines',
-                line=dict(color='#38bdf8', width=3), 
+                line=dict(color='#2563eb', width=3), # Azul standard
                 fill=None 
             ), row=1, col=1)
             
+            # Grafico Riesgo (Rojo)
             fig.add_trace(go.Scatter(
                 x=plot_series_dd.index, y=plot_series_dd, 
                 name="DD", mode='lines',
-                line=dict(color='#f87171', width=1), 
-                fill='tozeroy', fillcolor='rgba(248, 113, 113, 0.2)'
+                line=dict(color='#dc2626', width=1), 
+                fill='tozeroy', fillcolor='rgba(220, 38, 38, 0.1)'
             ), row=2, col=1)
             
             fig.update_layout(height=480, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
                               showlegend=False, hovermode="x unified", margin=dict(l=0,r=0,t=0,b=0), 
-                              font=dict(color='#e2e8f0'))
+                              font=dict(color='#334155')) # Texto del gráfico en gris oscuro
             
-            fig.update_yaxes(gridcolor='#334155', row=1, col=1, autorange=True)
-            fig.update_yaxes(tickformat=".0%", gridcolor='#334155', row=2, col=1)
-            fig.update_xaxes(gridcolor='#334155')
+            fig.update_yaxes(gridcolor='#e2e8f0', row=1, col=1, autorange=True)
+            fig.update_yaxes(tickformat=".0%", gridcolor='#e2e8f0', row=2, col=1)
+            fig.update_xaxes(gridcolor='#e2e8f0')
             
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.write("Cargando sistema...")
+            st.write("Cargando...")
 
     with col_table:
         st.subheader("⚖️ Bandas (Abs ±10%)")
@@ -325,16 +337,16 @@ if not full_df.empty:
         df_rb = pd.DataFrame(rebal_data)
         
         def style_rebal(v):
-            if "VENDER" in v: return 'color: #fca5a5; font-weight: bold;'
-            if "COMPRAR" in v: return 'color: #93c5fd; font-weight: bold;'
-            return 'color: #6ee7b7;'
+            if "VENDER" in v: return 'color: #991b1b; background-color: #fee2e2; font-weight: bold; border-radius: 4px; padding: 2px;'
+            if "COMPRAR" in v: return 'color: #1e40af; background-color: #dbeafe; font-weight: bold; border-radius: 4px; padding: 2px;'
+            return 'color: #166534; background-color: #dcfce7; font-weight: bold; border-radius: 4px; padding: 2px;'
             
         st.dataframe(df_rb.style.applymap(style_rebal, subset=['Estado']), use_container_width=True, hide_index=True)
         
         st.markdown(f"""
-        <div style="background-color:#334155; padding:15px; border-radius:8px; margin-top:20px; border:1px solid #475569;">
-            <span style="color:#cbd5e1; font-size: 1.1rem;">Liquidez (Cash):</span>
-            <span style="color:#fff; font-weight:bold; float:right; font-size:1.3rem;">{cash_leftover:.2f} €</span>
+        <div style="background-color:#ffffff; padding:15px; border-radius:8px; margin-top:20px; border:1px solid #cbd5e1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <span style="color:#475569; font-size: 1.1rem; font-weight: 600;">Liquidez (Cash):</span>
+            <span style="color:#0f172a; font-weight:bold; float:right; font-size:1.3rem;">{cash_leftover:.2f} €</span>
         </div>
         """, unsafe_allow_html=True)
 
