@@ -6,76 +6,79 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, date, timedelta
 
-# --- 1. CONFIGURACIÓN VISUAL (ALTO CONTRASTE Y TAMAÑO) ---
+# --- 1. CONFIGURACIÓN VISUAL (CSS CORREGIDO) ---
 st.set_page_config(page_title="Cartera Permanente Pro", layout="wide", page_icon="🛡️")
 
 st.markdown("""
 <style>
     /* --- FONDO GENERAL --- */
-    .stApp { background-color: #0f172a; } /* Azul noche muy oscuro */
+    .stApp { background-color: #0f172a; } /* Azul noche */
     
     /* --- BARRA LATERAL (SIDEBAR) --- */
     section[data-testid="stSidebar"] {
-        min-width: 400px !important;
-        width: 400px !important;
+        min-width: 350px !important; /* Un poco menos ancho para asegurar ajuste */
+        width: 350px !important;
         background-color: #1e293b !important; /* Gris azulado oscuro */
     }
     
-    /* FORZAR TEXTOS BLANCOS EN SIDEBAR */
-    section[data-testid="stSidebar"] h1, h2, h3, label, span, p, div, input {
+    /* TEXTOS DEL SIDEBAR (Etiquetas generales) */
+    section[data-testid="stSidebar"] h1, 
+    section[data-testid="stSidebar"] h2, 
+    section[data-testid="stSidebar"] h3, 
+    section[data-testid="stSidebar"] label, 
+    section[data-testid="stSidebar"] span, 
+    section[data-testid="stSidebar"] p, 
+    section[data-testid="stSidebar"] div {
         color: #f8fafc !important;
     }
-    
-    /* --- TITULOS PRINCIPALES --- */
-    h1, h2, h3 { 
-        color: #f1f5f9 !important; 
-        font-family: 'Segoe UI', sans-serif; 
-        font-weight: 800; 
-        letter-spacing: 0.5px;
+
+    /* --- CORRECCIÓN DE INPUTS (Cajas de texto y fecha) --- */
+    /* Forzamos fondo oscuro y texto blanco en los inputs */
+    div[data-baseweb="input"], div[data-baseweb="base-input"] {
+        background-color: #334155 !important; /* Fondo Gris */
+        border: 1px solid #475569 !important;
+        border-radius: 4px !important;
+    }
+    input[class*="st-"] {
+        color: #ffffff !important; /* Texto Blanco */
     }
     
-    /* --- TARJETAS DE MÉTRICAS (KPIs) - DISEÑO GRANDE --- */
-    div[data-testid="stMetric"] {
-        background-color: #334155; /* Gris más claro para contraste */
-        border: 1px solid #475569;
-        border-left: 6px solid #3b82f6; /* Borde azul intenso */
-        border-radius: 8px; 
-        padding: 20px; 
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    /* --- CORRECCIÓN BOTÓN RECARGAR --- */
+    section[data-testid="stSidebar"] button {
+        background-color: #3b82f6 !important; /* Azul */
+        color: white !important;
+        border: none !important;
+    }
+
+    /* --- METRICAS EN EL SIDEBAR (Hacerlas más pequeñas para que no se corten) --- */
+    section[data-testid="stSidebar"] div[data-testid="stMetricValue"] div {
+        font-size: 1.4rem !important; /* Tamaño medio para que quepa "-21.19%" */
     }
     
-    /* ETIQUETAS (Títulos de las tarjetas) */
-    div[data-testid="stMetricLabel"] p {
-        color: #ffffff !important; /* BLANCO PURO */
-        font-size: 1.2rem !important; /* Más grande */
-        font-weight: 600 !important;
-    }
-    div[data-testid="stMetricLabel"] {
-        color: #ffffff !important;
-    }
-    
-    /* VALORES (Números grandes) */
-    div[data-testid="stMetricValue"] div {
-        color: #ffffff !important; /* BLANCO PURO */
-        font-size: 2.2rem !important; /* GIGANTE */
+    /* --- MÉTRICAS EN EL DASHBOARD PRINCIPAL (Mantenerlas gigantes) --- */
+    section[data-testid="stMain"] div[data-testid="stMetricValue"] div {
+        font-size: 2.2rem !important; /* Gigante */
         font-weight: 800 !important;
-        text-shadow: 0px 0px 10px rgba(255,255,255,0.1);
     }
     
-    /* DELTAS (Flechas y porcentajes pequeños) */
-    div[data-testid="stMetricDelta"] div {
+    /* Estilos de tarjetas generales */
+    div[data-testid="stMetric"] {
+        background-color: #334155;
+        border: 1px solid #475569;
+        border-left: 5px solid #3b82f6;
+        border-radius: 8px; 
+        padding: 15px; 
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Etiquetas de las tarjetas */
+    div[data-testid="stMetricLabel"] p {
+        color: #ffffff !important;
         font-size: 1rem !important;
-        font-weight: 700 !important;
     }
 
     /* --- TABLAS --- */
     .stDataFrame { border: 1px solid #475569; }
-    
-    /* Ajuste de inputs de fecha para que se vean bien */
-    div[data-baseweb="input"] {
-        background-color: #334155 !important;
-        color: white !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -141,9 +144,11 @@ def calculate_metrics(series, capital_inicial):
 # --- 4. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Configuración")
+    
+    # Input Capital
     capital = st.number_input("Capital Inicial (€)", value=13000, step=500)
     
-    # --- CAMBIO: FECHA POR DEFECTO = HOY ---
+    # Input Fecha (Por defecto HOY)
     start_date = st.date_input("Fecha Inicio Inversión", value=date.today())
     
     if st.button("🔄 Recargar Datos"):
@@ -152,6 +157,7 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("📜 Benchmark Histórico")
+    
     col_b1, col_b2 = st.columns(2)
     col_b1.metric("CAGR", BENCHMARK_STATS["CAGR"])
     col_b1.metric("Max DD", BENCHMARK_STATS["Max DD"])
@@ -162,7 +168,7 @@ with st.sidebar:
 st.title("Dashboard de Cartera")
 
 tickers = list(PORTFOLIO_CONFIG.keys())
-with st.spinner('Conectando con mercados...'):
+with st.spinner('Obteniendo datos...'):
     full_df = get_market_data_cached(tickers)
 
 if not full_df.empty:
@@ -172,14 +178,12 @@ if not full_df.empty:
     df_analysis = full_df[full_df.index >= pd.to_datetime(start_date)].copy()
     df_analysis = df_analysis.ffill().dropna()
 
-    # Si la fecha es HOY o futura, no habrá datos históricos. Simulamos el punto inicial.
+    # Simulación inicio
     if len(df_analysis) == 0:
-        # st.info("📅 Inicio de inversión fijado hoy. El gráfico empezará a moverse mañana.")
         last_known = full_df.ffill().iloc[-1]
-        # Creamos un dataframe con un solo punto (el último precio conocido)
         df_analysis = pd.DataFrame([last_known], index=[pd.to_datetime(start_date)])
 
-    # --- MOTOR INVERSIÓN ---
+    # --- MOTOR ---
     initial_prices = df_analysis.ffill().iloc[0]
     latest_prices = df_analysis.ffill().iloc[-1]
     
@@ -211,7 +215,7 @@ if not full_df.empty:
     abs_ret = current_total - capital
     pct_ret = (current_total / capital) - 1
 
-    # --- VISUALIZACIÓN (Tarjetas Grandes) ---
+    # --- VISUALIZACIÓN ---
     k1, k2, k3, k4 = st.columns(4)
     
     k1.metric("Valor Actual", f"{current_total:,.0f} €", f"Inv: {capital:,.0f} €", delta_color="off")
@@ -226,33 +230,24 @@ if not full_df.empty:
     with col_graph:
         st.subheader("📈 Evolución")
         
-        # Solo graficamos si tenemos datos (aunque sea un punto)
         if len(df_analysis) > 0:
-            
-            # LOGICA DE VISUALIZACION:
-            # Si acabamos de empezar (hoy), creamos una linea plana visual artificial de "Ayer" a "Hoy"
-            # para que el gráfico no se vea vacío.
             start_plot_date = portfolio_series.index[0] - timedelta(days=1)
             
-            # Series Valor
             row_init_val = pd.DataFrame({'Total': [capital]}, index=[start_plot_date])
             plot_series_val = pd.concat([row_init_val, portfolio_series[['Total']]]).sort_index()
             
-            # Series Drawdown
             row_init_dd = pd.Series([0.0], index=[start_plot_date])
             plot_series_dd = pd.concat([row_init_dd, dd_series]).sort_index()
             
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.05)
             
-            # Gráfico Valor (Sin relleno para auto-escala)
             fig.add_trace(go.Scatter(
                 x=plot_series_val.index, y=plot_series_val['Total'], 
                 name="Valor", mode='lines',
                 line=dict(color='#38bdf8', width=3), 
-                fill=None # Sin relleno para que el eje Y no empiece en 0
+                fill=None 
             ), row=1, col=1)
             
-            # Gráfico Riesgo
             fig.add_trace(go.Scatter(
                 x=plot_series_dd.index, y=plot_series_dd, 
                 name="DD", mode='lines',
@@ -270,7 +265,7 @@ if not full_df.empty:
             
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.write("Iniciando sistema...")
+            st.write("Cargando sistema...")
 
     with col_table:
         st.subheader("⚖️ Bandas (Abs ±10%)")
@@ -323,4 +318,4 @@ if not full_df.empty:
         """, unsafe_allow_html=True)
 
 else:
-    st.error("⚠️ Error conectando con mercado.")
+    st.error("⚠️ Error de conexión.")
