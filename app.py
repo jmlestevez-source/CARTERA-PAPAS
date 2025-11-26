@@ -6,79 +6,105 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, date, timedelta
 
-# --- 1. CONFIGURACIÓN VISUAL (CSS CORREGIDO) ---
+# --- 1. CONFIGURACIÓN VISUAL Y CSS QUIRÚRGICO ---
 st.set_page_config(page_title="Cartera Permanente Pro", layout="wide", page_icon="🛡️")
 
 st.markdown("""
 <style>
-    /* --- FONDO GENERAL --- */
-    .stApp { background-color: #0f172a; } /* Azul noche */
-    
-    /* --- BARRA LATERAL (SIDEBAR) --- */
-    section[data-testid="stSidebar"] {
-        min-width: 350px !important; /* Un poco menos ancho para asegurar ajuste */
-        width: 350px !important;
-        background-color: #1e293b !important; /* Gris azulado oscuro */
+    /* =============================================
+       1. FONDO Y TEXTOS GENERALES (GLOBAL)
+       ============================================= */
+    .stApp { 
+        background-color: #0f172a !important; /* Azul noche profundo */
     }
     
-    /* TEXTOS DEL SIDEBAR (Etiquetas generales) */
-    section[data-testid="stSidebar"] h1, 
-    section[data-testid="stSidebar"] h2, 
-    section[data-testid="stSidebar"] h3, 
+    /* Forzar BLANCO en todos los títulos H1, H2, H3 del panel principal */
+    .main h1, .main h2, .main h3 {
+        color: #ffffff !important;
+        font-family: 'Segoe UI', sans-serif;
+        font-weight: 800;
+    }
+
+    /* =============================================
+       2. BARRA LATERAL (SIDEBAR) - ESTILO ESPECÍFICO
+       ============================================= */
+    section[data-testid="stSidebar"] {
+        min-width: 350px !important;
+        width: 350px !important;
+        background-color: #1e293b !important; /* Gris azulado */
+    }
+    
+    /* Textos generales del Sidebar */
     section[data-testid="stSidebar"] label, 
     section[data-testid="stSidebar"] span, 
     section[data-testid="stSidebar"] p, 
-    section[data-testid="stSidebar"] div {
-        color: #f8fafc !important;
+    section[data-testid="stSidebar"] h1,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3 {
+        color: #f8fafc !important; /* Blanco */
     }
 
-    /* --- CORRECCIÓN DE INPUTS (Cajas de texto y fecha) --- */
-    /* Forzamos fondo oscuro y texto blanco en los inputs */
+    /* INPUTS DEL SIDEBAR (Cajas de texto y fecha) */
+    /* Fondo de la caja */
     div[data-baseweb="input"], div[data-baseweb="base-input"] {
-        background-color: #334155 !important; /* Fondo Gris */
+        background-color: #334155 !important; 
         border: 1px solid #475569 !important;
         border-radius: 4px !important;
     }
+    /* Texto dentro de la caja */
     input[class*="st-"] {
-        color: #ffffff !important; /* Texto Blanco */
+        color: #ffffff !important;
+    }
+    /* Iconos de calendario/flechas */
+    div[data-baseweb="select"] svg, div[data-testid="stDateInput"] svg {
+        fill: white !important;
     }
     
-    /* --- CORRECCIÓN BOTÓN RECARGAR --- */
+    /* BOTÓN RECARGAR */
     section[data-testid="stSidebar"] button {
-        background-color: #3b82f6 !important; /* Azul */
+        background-color: #3b82f6 !important;
         color: white !important;
         border: none !important;
     }
 
-    /* --- METRICAS EN EL SIDEBAR (Hacerlas más pequeñas para que no se corten) --- */
+    /* MÉTRICAS PEQUEÑAS (Benchmark) DEL SIDEBAR */
     section[data-testid="stSidebar"] div[data-testid="stMetricValue"] div {
-        font-size: 1.4rem !important; /* Tamaño medio para que quepa "-21.19%" */
-    }
-    
-    /* --- MÉTRICAS EN EL DASHBOARD PRINCIPAL (Mantenerlas gigantes) --- */
-    section[data-testid="stMain"] div[data-testid="stMetricValue"] div {
-        font-size: 2.2rem !important; /* Gigante */
-        font-weight: 800 !important;
-    }
-    
-    /* Estilos de tarjetas generales */
-    div[data-testid="stMetric"] {
-        background-color: #334155;
-        border: 1px solid #475569;
-        border-left: 5px solid #3b82f6;
-        border-radius: 8px; 
-        padding: 15px; 
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    }
-    
-    /* Etiquetas de las tarjetas */
-    div[data-testid="stMetricLabel"] p {
+        font-size: 1.4rem !important; /* Tamaño contenido */
         color: #ffffff !important;
-        font-size: 1rem !important;
     }
 
-    /* --- TABLAS --- */
+    /* =============================================
+       3. DASHBOARD PRINCIPAL - ESTILO ESPECÍFICO
+       ============================================= */
+       
+    /* TARJETAS DE MÉTRICAS (Las cajas grandes) */
+    section[data-testid="stMain"] div[data-testid="stMetric"] {
+        background-color: #334155 !important; /* Fondo gris medio para contraste */
+        border: 1px solid #475569;
+        border-left: 6px solid #3b82f6; /* Borde azul */
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+
+    /* VALORES GIGANTES (Ej: 13,000 €) */
+    section[data-testid="stMain"] div[data-testid="stMetricValue"] div {
+        font-size: 2.4rem !important; 
+        color: #ffffff !important; /* BLANCO PURO FORZADO */
+        font-weight: 800 !important;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+
+    /* ETIQUETAS DE TARJETAS (Ej: Valor Actual) */
+    section[data-testid="stMain"] div[data-testid="stMetricLabel"] p {
+        font-size: 1.1rem !important;
+        color: #e2e8f0 !important; /* Blanco hueso */
+        font-weight: 600 !important;
+    }
+
+    /* TABLAS */
     .stDataFrame { border: 1px solid #475569; }
+    
 </style>
 """, unsafe_allow_html=True)
 
@@ -145,10 +171,7 @@ def calculate_metrics(series, capital_inicial):
 with st.sidebar:
     st.header("⚙️ Configuración")
     
-    # Input Capital
     capital = st.number_input("Capital Inicial (€)", value=13000, step=500)
-    
-    # Input Fecha (Por defecto HOY)
     start_date = st.date_input("Fecha Inicio Inversión", value=date.today())
     
     if st.button("🔄 Recargar Datos"):
@@ -174,11 +197,9 @@ with st.spinner('Obteniendo datos...'):
 if not full_df.empty:
     full_df.index = pd.to_datetime(full_df.index)
     
-    # Filtrar datos
     df_analysis = full_df[full_df.index >= pd.to_datetime(start_date)].copy()
     df_analysis = df_analysis.ffill().dropna()
 
-    # Simulación inicio
     if len(df_analysis) == 0:
         last_known = full_df.ffill().iloc[-1]
         df_analysis = pd.DataFrame([last_known], index=[pd.to_datetime(start_date)])
