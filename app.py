@@ -175,7 +175,7 @@ PORTFOLIO_CONFIG = {
     },
     'IUSM.DE': {  # iShares USD Treasury 7-10yr
         'name': 'iShares Treasury 7-10yr',
-        'shares': 220,
+        'shares': 20,
         'buy_price': 151.51,
         'dividend_yield': 0.035,  # ~3.5% (cupones bonos)
         'dividend_months': [2, 8],  # Semestral
