@@ -110,14 +110,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 2. DATOS DE LA CARTERA ---
-# ETFs con acciones compradas y precio de compra
+# ETFs con acciones compradas y precio de compra (datos reales a 01/12/2025)
 PORTFOLIO_CONFIG = {
     'IQQM.DE': {
         'name': 'iShares EURO STOXX Mid',
         'shares': 27,
         'buy_price': 78.25,
-        'dividend_months': [6, 12],  # Semestral
-        'dividend_per_share_annual': 1.50,  # Estimado anual
+        'dividend_months': [3, 9],  # Marzo y Septiembre (semestral)
+        'dividend_per_share_annual': 1.85,  # ~2.4% yield actual
         'withholding': 0.00,  # Domiciliado en Irlanda
     },
     'TDIV.AS': {
@@ -125,32 +125,32 @@ PORTFOLIO_CONFIG = {
         'shares': 83,
         'buy_price': 46.72,
         'dividend_months': [3, 6, 9, 12],  # Trimestral
-        'dividend_per_share_annual': 1.75,
-        'withholding': 0.00,
+        'dividend_per_share_annual': 1.68,  # ~3.6% yield actual
+        'withholding': 0.00,  # Domiciliado en Irlanda
     },
     'EHDV.DE': {
         'name': 'Invesco Euro High Div',
         'shares': 59,
         'buy_price': 31.60,
         'dividend_months': [3, 6, 9, 12],  # Trimestral
-        'dividend_per_share_annual': 1.40,
-        'withholding': 0.00,
+        'dividend_per_share_annual': 1.52,  # ~4.8% yield actual
+        'withholding': 0.00,  # Domiciliado en Irlanda
     },
     'IUSM.DE': {
         'name': 'iShares Treasury 7-10yr',
-        'shares': 20,
+        'shares': 20,  # CORREGIDO: 20 acciones
         'buy_price': 151.51,
-        'dividend_months': [2, 8],  # Semestral
-        'dividend_per_share_annual': 0.15,  # Bajo yield en bonos
-        'withholding': 0.00,
+        'dividend_months': [4, 10],  # Abril y Octubre (semestral)
+        'dividend_per_share_annual': 5.45,  # ~3.6% yield actual
+        'withholding': 0.00,  # Domiciliado en Irlanda
     },
     'JNKE.MI': {
         'name': 'SPDR Euro High Yield',
         'shares': 37,
         'buy_price': 52.13,
-        'dividend_months': [6, 12],  # Semestral
-        'dividend_per_share_annual': 2.50,
-        'withholding': 0.00,
+        'dividend_months': [6, 12],  # Junio y Diciembre (semestral)
+        'dividend_per_share_annual': 2.87,  # ~5.5% yield actual
+        'withholding': 0.00,  # Domiciliado en Irlanda
     }
 }
 
@@ -164,8 +164,23 @@ for ticker, cfg in PORTFOLIO_CONFIG.items():
 # Retención española sobre dividendos
 RETENCION_ESPANA = 0.19
 
+# Métricas del benchmark histórico (actualizadas)
 BENCHMARK_STATS = {
-    "CAGR": "6.77%", "Sharpe": "0.572", "Volatilidad": "8.77%", "Max DD": "-21.19%"
+    "CAGR": "6.81%", 
+    "Sharpe": "0.529", 
+    "Volatilidad": "9.40%", 
+    "Max DD": "-26.76%"
+}
+
+# Benchmarks populares para comparación
+BENCHMARK_OPTIONS = {
+    "Ninguno": None,
+    "MSCI World (IWDA.AS)": "IWDA.AS",
+    "S&P 500 (SPY)": "SPY",
+    "Euro Stoxx 50 (SX5E.DE)": "SX5E.DE",
+    "Global Aggregate Bond (AGGH.MI)": "AGGH.MI",
+    "MSCI Europe (IMEU.AS)": "IMEU.AS",
+    "Nasdaq 100 (QQQ)": "QQQ",
 }
 
 # --- 3. FUNCIONES ---
@@ -186,6 +201,17 @@ def get_market_data_cached(tickers):
         return df
     except Exception:
         return pd.DataFrame()
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_benchmark_data(ticker, start_date):
+    """Obtiene datos del benchmark seleccionado"""
+    try:
+        data = yf.download(ticker, start=start_date, progress=False, auto_adjust=True)
+        if 'Close' in data.columns:
+            return data['Close']
+        return data
+    except Exception:
+        return pd.Series()
 
 def calculate_metrics(series, capital_inicial):
     if series.empty or len(series) < 2: 
@@ -224,6 +250,22 @@ with st.sidebar:
     default_date = date(2025, 12, 1)
     start_date = st.date_input("Fecha Inicio Inversión", value=default_date)
     
+    st.markdown("---")
+    
+    # Selector de benchmark para comparación
+    st.subheader("📊 Benchmark Comparativo")
+    benchmark_selection = st.selectbox(
+        "Seleccionar índice:",
+        options=list(BENCHMARK_OPTIONS.keys()),
+        index=0
+    )
+    
+    # Opción para ticker personalizado
+    custom_benchmark = st.text_input(
+        "O introduce un ticker personalizado:",
+        placeholder="Ej: VWCE.DE, ^GSPC, etc."
+    )
+    
     if st.button("🔄 Recargar Datos"):
         st.cache_data.clear()
         st.rerun()
@@ -238,7 +280,7 @@ with st.sidebar:
     col_b2.metric("Volat.", BENCHMARK_STATS["Volatilidad"])
     
     st.markdown("---")
-    st.subheader("📊 Cartera Actual")
+    st.subheader("📋 Cartera Actual")
     st.caption(f"Capital invertido: €{CAPITAL_INVERTIDO:,.2f}")
     for ticker, cfg in PORTFOLIO_CONFIG.items():
         inv = cfg['shares'] * cfg['buy_price']
@@ -246,6 +288,13 @@ with st.sidebar:
 
 # --- 5. LÓGICA PRINCIPAL ---
 st.title("Dashboard de Cartera")
+
+# Determinar benchmark a usar
+benchmark_ticker = None
+if custom_benchmark.strip():
+    benchmark_ticker = custom_benchmark.strip().upper()
+elif BENCHMARK_OPTIONS[benchmark_selection]:
+    benchmark_ticker = BENCHMARK_OPTIONS[benchmark_selection]
 
 # Crear tabs
 tab1, tab2 = st.tabs(["📈 Rendimiento", "📅 Calendario de Dividendos"])
@@ -305,7 +354,11 @@ with tab1:
         col_graph, col_table = st.columns([2, 1])
         
         with col_graph:
-            st.subheader("📈 Evolución")
+            # Título dinámico según benchmark
+            if benchmark_ticker:
+                st.subheader(f"📈 Evolución vs {benchmark_ticker}")
+            else:
+                st.subheader("📈 Evolución")
             
             if len(df_analysis) > 0:
                 start_plot_date = portfolio_series.index[0] - timedelta(days=1)
@@ -316,31 +369,94 @@ with tab1:
                 row_init_dd = pd.Series([0.0], index=[start_plot_date])
                 plot_series_dd = pd.concat([row_init_dd, dd_series]).sort_index()
                 
+                # Normalizar cartera a base 100
+                portfolio_normalized = (plot_series_val['Total'] / plot_series_val['Total'].iloc[0]) * 100
+                
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.05)
                 
+                # Gráfico de la cartera (normalizado a base 100)
                 fig.add_trace(go.Scatter(
-                    x=plot_series_val.index, y=plot_series_val['Total'], 
-                    name="Valor", mode='lines',
+                    x=portfolio_normalized.index, 
+                    y=portfolio_normalized, 
+                    name="Mi Cartera", 
+                    mode='lines',
                     line=dict(color='#2563eb', width=3),
-                    fill=None 
+                    hovertemplate='Mi Cartera: %{y:.2f}<extra></extra>'
                 ), row=1, col=1)
                 
+                # Añadir benchmark si está seleccionado
+                if benchmark_ticker:
+                    with st.spinner(f'Cargando benchmark {benchmark_ticker}...'):
+                        benchmark_data = get_benchmark_data(benchmark_ticker, start_plot_date)
+                    
+                    if not benchmark_data.empty:
+                        # Alinear fechas con la cartera
+                        benchmark_data.index = pd.to_datetime(benchmark_data.index)
+                        benchmark_aligned = benchmark_data.reindex(portfolio_normalized.index, method='ffill')
+                        benchmark_aligned = benchmark_aligned.ffill().bfill()
+                        
+                        # Normalizar benchmark a base 100
+                        if len(benchmark_aligned) > 0 and benchmark_aligned.iloc[0] > 0:
+                            benchmark_normalized = (benchmark_aligned / benchmark_aligned.iloc[0]) * 100
+                            
+                            fig.add_trace(go.Scatter(
+                                x=benchmark_normalized.index, 
+                                y=benchmark_normalized, 
+                                name=benchmark_ticker, 
+                                mode='lines',
+                                line=dict(color='#f59e0b', width=2, dash='dot'),
+                                hovertemplate=f'{benchmark_ticker}: %{{y:.2f}}<extra></extra>'
+                            ), row=1, col=1)
+                    else:
+                        st.warning(f"⚠️ No se pudieron obtener datos para {benchmark_ticker}")
+                
+                # Gráfico de Drawdown
                 fig.add_trace(go.Scatter(
                     x=plot_series_dd.index, y=plot_series_dd, 
                     name="DD", mode='lines',
                     line=dict(color='#dc2626', width=1), 
-                    fill='tozeroy', fillcolor='rgba(220, 38, 38, 0.1)'
+                    fill='tozeroy', fillcolor='rgba(220, 38, 38, 0.1)',
+                    hovertemplate='Drawdown: %{y:.2%}<extra></extra>'
                 ), row=2, col=1)
                 
-                fig.update_layout(height=480, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-                                  showlegend=False, hovermode="x unified", margin=dict(l=0,r=0,t=0,b=0), 
-                                  font=dict(color='#334155'))
+                fig.update_layout(
+                    height=520, 
+                    paper_bgcolor='rgba(0,0,0,0)', 
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1,
+                        font=dict(size=12)
+                    ),
+                    hovermode="x unified", 
+                    margin=dict(l=0,r=0,t=30,b=0), 
+                    font=dict(color='#334155')
+                )
                 
-                fig.update_yaxes(gridcolor='#e2e8f0', row=1, col=1, autorange=True)
-                fig.update_yaxes(tickformat=".0%", gridcolor='#e2e8f0', row=2, col=1)
+                fig.update_yaxes(title_text="Base 100", gridcolor='#e2e8f0', row=1, col=1, autorange=True)
+                fig.update_yaxes(title_text="DD", tickformat=".0%", gridcolor='#e2e8f0', row=2, col=1)
                 fig.update_xaxes(gridcolor='#e2e8f0')
                 
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Mostrar comparativa de rendimiento si hay benchmark
+                if benchmark_ticker and not benchmark_data.empty:
+                    portfolio_ret = (portfolio_normalized.iloc[-1] / 100) - 1
+                    benchmark_ret = (benchmark_normalized.iloc[-1] / 100) - 1
+                    outperformance = portfolio_ret - benchmark_ret
+                    
+                    col_p1, col_p2, col_p3 = st.columns(3)
+                    col_p1.metric("📊 Mi Cartera", f"{portfolio_ret:+.2%}")
+                    col_p2.metric(f"📈 {benchmark_ticker}", f"{benchmark_ret:+.2%}")
+                    
+                    if outperformance >= 0:
+                        col_p3.metric("🏆 Outperformance", f"+{outperformance:.2%}", delta_color="normal")
+                    else:
+                        col_p3.metric("📉 Underperformance", f"{outperformance:.2%}", delta_color="inverse")
             else:
                 st.write("Cargando...")
 
@@ -399,8 +515,8 @@ with tab2:
     st.markdown("""
     <div style="background-color:#dbeafe; border-left:4px solid #2563eb; padding:15px; border-radius:0 8px 8px 0; margin-bottom:20px;">
         <b>ℹ️ Información para inversores españoles:</b><br>
-        Los ETFs UCITS domiciliados en Irlanda/Luxemburgo no tienen retención en origen. 
-        En España se aplica una <b>retención del 19%</b> sobre los dividendos.
+        Los ETFs UCITS domiciliados en Irlanda/Luxemburgo <b>no tienen retención en origen</b>. 
+        En España se aplica una <b>retención del 19%</b> sobre los dividendos cobrados.
     </div>
     """, unsafe_allow_html=True)
     
@@ -486,7 +602,6 @@ with tab2:
             return 'background-color: #dcfce7; color: #166534; font-weight: bold;'
         return ''
     
-    # Aplicar estilo solo a columnas de meses
     styled_df = df_div.style.applymap(highlight_dividend, subset=meses)
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
     
@@ -503,6 +618,7 @@ with tab2:
         
         fiscal_data.append({
             'ETF': ticker,
+            'Nombre': cfg['name'],
             'Dividendo Bruto': f"€{annual_div:.2f}",
             'Ret. Origen': f"€{ret_origen:.2f} ({cfg['withholding']*100:.0f}%)",
             'Ret. España': f"€{ret_esp:.2f} (19%)",
@@ -514,8 +630,8 @@ with tab2:
     
     st.markdown("""
     <div style="background-color:#fef3c7; border-left:4px solid #f59e0b; padding:15px; border-radius:0 8px 8px 0; margin-top:20px;">
-        <b>⚠️ Nota:</b> Los importes de dividendos son <b>estimaciones</b> basadas en yields históricos. 
-        Los dividendos reales pueden variar. Los ETFs domiciliados en Irlanda/Luxemburgo generalmente 
-        no aplican retención en origen para inversores de la UE.
+        <b>⚠️ Nota:</b> Los importes de dividendos son <b>estimaciones</b> basadas en yields actuales a fecha 01/12/2025. 
+        Los dividendos reales pueden variar según las condiciones de mercado. Los ETFs UCITS domiciliados 
+        en Irlanda no aplican retención en origen para inversores de la UE.
     </div>
     """, unsafe_allow_html=True)
