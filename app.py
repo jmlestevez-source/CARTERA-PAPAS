@@ -5,10 +5,9 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, date, timedelta
-import calendar
 
 # --- 1. CONFIGURACIÓN VISUAL (ESTILO CLARO/PROFESIONAL) ---
-st.set_page_config(page_title="Cartera Dividendos Pro", layout="wide", page_icon="💰")
+st.set_page_config(page_title="Cartera Permanente Pro", layout="wide", page_icon="🛡️")
 
 st.markdown("""
 <style>
@@ -33,8 +32,8 @@ st.markdown("""
        2. BARRA LATERAL (SIDEBAR) - OSCURA
        ============================================= */
     section[data-testid="stSidebar"] {
-        min-width: 380px !important;
-        width: 380px !important;
+        min-width: 350px !important;
+        width: 350px !important;
         background-color: #0f172a !important;
     }
     
@@ -67,7 +66,7 @@ st.markdown("""
     }
 
     /* =============================================
-       3. TARJETAS DE MÉTRICAS
+       3. TARJETAS DE MÉTRICAS (ESTILO BANCA)
        ============================================= */
     section[data-testid="stMain"] div[data-testid="stMetric"] {
         background-color: #ffffff !important;
@@ -79,134 +78,94 @@ st.markdown("""
     }
 
     section[data-testid="stMain"] div[data-testid="stMetricValue"] div {
-        font-size: 2.2rem !important; 
+        font-size: 2.4rem !important; 
         color: #0f172a !important;
         font-weight: 800 !important;
     }
 
     section[data-testid="stMain"] div[data-testid="stMetricLabel"] p {
-        font-size: 1rem !important;
+        font-size: 1.1rem !important;
         color: #64748b !important;
         font-weight: 600 !important;
     }
     
     section[data-testid="stMain"] div[data-testid="stMetricDelta"] div {
-        font-size: 1.2rem !important;
+        font-size: 1.3rem !important;
         font-weight: 700 !important;
     }
     
     section[data-testid="stMain"] div[data-testid="stMetricDelta"] svg {
-        transform: scale(1.2);
+        transform: scale(1.3);
         margin-right: 5px;
     }
 
     /* =============================================
-       4. TABLAS Y CALENDARIO DIVIDENDOS
+       4. TABLAS Y GRÁFICOS
        ============================================= */
     .stDataFrame { 
         border: 1px solid #cbd5e1; 
-    }
-    
-    .dividend-card {
-        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-        border-radius: 12px;
-        padding: 20px;
-        color: white;
-        margin: 10px 0;
-        box-shadow: 0 4px 15px rgba(5, 150, 105, 0.3);
-    }
-    
-    .dividend-month {
-        background-color: #ffffff;
-        border: 2px solid #10b981;
-        border-radius: 8px;
-        padding: 10px;
-        margin: 5px;
-        text-align: center;
-    }
-    
-    .dividend-month.active {
-        background-color: #d1fae5;
-        border-color: #059669;
-    }
-    
-    .tax-info {
-        background-color: #fef3c7;
-        border-left: 4px solid #f59e0b;
-        padding: 15px;
-        border-radius: 0 8px 8px 0;
-        margin: 15px 0;
     }
     
 </style>
 """, unsafe_allow_html=True)
 
 # --- 2. DATOS DE LA CARTERA ---
+# ETFs con acciones compradas y precio de compra
 PORTFOLIO_CONFIG = {
-    'IQQM.DE': {  # iShares EURO STOXX Mid Cap
+    'IQQM.DE': {
         'name': 'iShares EURO STOXX Mid',
         'shares': 27,
         'buy_price': 78.25,
-        'dividend_yield': 0.025,  # ~2.5% anual estimado
-        'dividend_months': [1, 7],  # Enero y Julio (semestral)
-        'dividend_per_share': 1.95,  # Estimado anual por acción
-        'country': 'DE',
-        'withholding_origin': 0.26375,  # Retención Alemania
+        'dividend_months': [6, 12],  # Semestral
+        'dividend_per_share_annual': 1.50,  # Estimado anual
+        'withholding': 0.00,  # Domiciliado en Irlanda
     },
-    'TDIV.AS': {  # Vanguard Dividend Leaders
+    'TDIV.AS': {
         'name': 'Vanguard Dividend Leaders',
         'shares': 83,
         'buy_price': 46.72,
-        'dividend_yield': 0.038,  # ~3.8% anual
         'dividend_months': [3, 6, 9, 12],  # Trimestral
-        'dividend_per_share': 1.78,  # Estimado anual por acción
-        'country': 'NL',
-        'withholding_origin': 0.15,  # Retención Países Bajos
+        'dividend_per_share_annual': 1.75,
+        'withholding': 0.00,
     },
-    'EHDV.DE': {  # Invesco Euro High Dividend
+    'EHDV.DE': {
         'name': 'Invesco Euro High Div',
         'shares': 59,
         'buy_price': 31.60,
-        'dividend_yield': 0.045,  # ~4.5% anual
         'dividend_months': [3, 6, 9, 12],  # Trimestral
-        'dividend_per_share': 1.42,  # Estimado anual por acción
-        'country': 'DE',
-        'withholding_origin': 0.26375,  # Retención Alemania
+        'dividend_per_share_annual': 1.40,
+        'withholding': 0.00,
     },
-    'IUSM.DE': {  # iShares USD Treasury 7-10yr
+    'IUSM.DE': {
         'name': 'iShares Treasury 7-10yr',
         'shares': 20,
         'buy_price': 151.51,
-        'dividend_yield': 0.035,  # ~3.5% (cupones bonos)
         'dividend_months': [2, 8],  # Semestral
-        'dividend_per_share': 5.30,  # Estimado anual por acción
-        'country': 'DE',
-        'withholding_origin': 0.26375,  # Retención Alemania
+        'dividend_per_share_annual': 0.15,  # Bajo yield en bonos
+        'withholding': 0.00,
     },
-    'JNKE.MI': {  # SPDR Euro High Yield
+    'JNKE.MI': {
         'name': 'SPDR Euro High Yield',
         'shares': 37,
         'buy_price': 52.13,
-        'dividend_yield': 0.048,  # ~4.8% anual
         'dividend_months': [6, 12],  # Semestral
-        'dividend_per_share': 2.50,  # Estimado anual por acción
-        'country': 'IT',
-        'withholding_origin': 0.26,  # Retención Italia
+        'dividend_per_share_annual': 2.50,
+        'withholding': 0.00,
     }
 }
 
-# Calcular capital inicial y pesos
-CAPITAL_INICIAL = sum(cfg['shares'] * cfg['buy_price'] for cfg in PORTFOLIO_CONFIG.values())
+# Calcular capital invertido y pesos
+CAPITAL_INVERTIDO = sum(cfg['shares'] * cfg['buy_price'] for cfg in PORTFOLIO_CONFIG.values())
 
 for ticker, cfg in PORTFOLIO_CONFIG.items():
     invested = cfg['shares'] * cfg['buy_price']
-    cfg['target'] = invested / CAPITAL_INICIAL
+    cfg['target'] = invested / CAPITAL_INVERTIDO
 
-# Retención española
+# Retención española sobre dividendos
 RETENCION_ESPANA = 0.19
 
 BENCHMARK_STATS = {
-    "CAGR": "5.2%", "Sharpe": "0.48", "Volatilidad": "9.5%", "Max DD": "-18.5%"
+    "CAGR": "6.77%", "Sharpe": "0.572", "Volatilidad": "8.77%", "Max DD": "-21.19%"
 }
 
 # --- 3. FUNCIONES ---
@@ -255,54 +214,11 @@ def calculate_metrics(series, capital_inicial):
         
     return cagr, max_dd, sharpe, dd
 
-def get_dividend_calendar():
-    """Genera el calendario de dividendos con información fiscal"""
-    dividend_data = []
-    monthly_totals = {i: {'bruto': 0, 'neto_origen': 0, 'neto_final': 0} for i in range(1, 13)}
-    
-    for ticker, cfg in PORTFOLIO_CONFIG.items():
-        annual_dividend = cfg['dividend_per_share'] * cfg['shares']
-        payments_per_year = len(cfg['dividend_months'])
-        dividend_per_payment = annual_dividend / payments_per_year
-        
-        for month in cfg['dividend_months']:
-            # Retención en origen
-            retencion_origen = dividend_per_payment * cfg['withholding_origin']
-            neto_origen = dividend_per_payment - retencion_origen
-            
-            # Retención española (sobre el bruto, pero con crédito por doble imposición)
-            # Simplificación: el neto final considera ambas retenciones
-            retencion_esp = dividend_per_payment * RETENCION_ESPANA
-            
-            # El inversor puede deducir la menor de: retención origen o retención española
-            credito_doble_imp = min(retencion_origen, retencion_esp)
-            neto_final = dividend_per_payment - retencion_origen - retencion_esp + credito_doble_imp
-            
-            dividend_data.append({
-                'Mes': month,
-                'Mes_Nombre': calendar.month_abbr[month],
-                'Ticker': ticker,
-                'ETF': cfg['name'],
-                'Div. Bruto': dividend_per_payment,
-                'Ret. Origen': retencion_origen,
-                'País': cfg['country'],
-                '% Ret. Origen': cfg['withholding_origin'],
-                'Neto Origen': neto_origen,
-                'Ret. España': retencion_esp,
-                'Neto Final': neto_final
-            })
-            
-            monthly_totals[month]['bruto'] += dividend_per_payment
-            monthly_totals[month]['neto_origen'] += neto_origen
-            monthly_totals[month]['neto_final'] += neto_final
-    
-    return pd.DataFrame(dividend_data), monthly_totals
-
 # --- 4. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Configuración")
     
-    st.markdown(f"**Capital Invertido:** €{CAPITAL_INICIAL:,.2f}")
+    capital = st.number_input("Capital Inicial (€)", value=13000, step=500)
     
     # Fecha por defecto: 01/12/2025
     default_date = date(2025, 12, 1)
@@ -313,19 +229,6 @@ with st.sidebar:
         st.rerun()
     
     st.markdown("---")
-    st.subheader("📊 Composición Cartera")
-    
-    for ticker, cfg in PORTFOLIO_CONFIG.items():
-        invested = cfg['shares'] * cfg['buy_price']
-        st.markdown(f"""
-        <div style="background:#1e293b; padding:8px; border-radius:6px; margin:5px 0; border-left:3px solid #10b981;">
-            <span style="color:#94a3b8; font-size:0.85rem;">{ticker}</span><br>
-            <span style="color:#f8fafc; font-weight:600;">{cfg['name']}</span><br>
-            <span style="color:#10b981;">{cfg['shares']} acc. × €{cfg['buy_price']:.2f} = €{invested:,.2f}</span>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("---")
     st.subheader("📜 Benchmark Histórico")
     
     col_b1, col_b2 = st.columns(2)
@@ -333,12 +236,19 @@ with st.sidebar:
     col_b1.metric("Max DD", BENCHMARK_STATS["Max DD"])
     col_b2.metric("Sharpe", BENCHMARK_STATS["Sharpe"])
     col_b2.metric("Volat.", BENCHMARK_STATS["Volatilidad"])
+    
+    st.markdown("---")
+    st.subheader("📊 Cartera Actual")
+    st.caption(f"Capital invertido: €{CAPITAL_INVERTIDO:,.2f}")
+    for ticker, cfg in PORTFOLIO_CONFIG.items():
+        inv = cfg['shares'] * cfg['buy_price']
+        st.caption(f"{ticker}: {cfg['shares']} acc × €{cfg['buy_price']:.2f} = €{inv:,.2f}")
 
 # --- 5. LÓGICA PRINCIPAL ---
-st.title("💰 Dashboard de Cartera de Dividendos")
+st.title("Dashboard de Cartera")
 
-# Tabs principales
-tab1, tab2, tab3 = st.tabs(["📈 Rendimiento", "📅 Calendario Dividendos", "📋 Detalle Fiscal"])
+# Crear tabs
+tab1, tab2 = st.tabs(["📈 Rendimiento", "📅 Calendario de Dividendos"])
 
 tickers = list(PORTFOLIO_CONFIG.keys())
 with st.spinner('Actualizando precios...'):
@@ -368,50 +278,39 @@ with tab1:
         for t in tickers:
             n_shares = PORTFOLIO_CONFIG[t]['shares']
             buy_price = PORTFOLIO_CONFIG[t]['buy_price']
-            
+                
             portfolio_shares[t] = n_shares
             invested_cash += n_shares * buy_price
+            portfolio_series['Total'] += df_analysis[t] * n_shares
             
-            if t in df_analysis.columns:
-                portfolio_series['Total'] += df_analysis[t] * n_shares
-            else:
-                portfolio_series['Total'] += buy_price * n_shares
-            
+        cash_leftover = capital - invested_cash
+        portfolio_series['Total'] += cash_leftover
         current_total = portfolio_series['Total'].iloc[-1]
         
         # --- KPIs ---
-        cagr_real, max_dd_real, sharpe_real, dd_series = calculate_metrics(
-            portfolio_series['Total'], CAPITAL_INICIAL
-        )
-        abs_ret = current_total - CAPITAL_INICIAL
-        pct_ret = (current_total / CAPITAL_INICIAL) - 1
+        cagr_real, max_dd_real, sharpe_real, dd_series = calculate_metrics(portfolio_series['Total'], capital)
+        abs_ret = current_total - capital
+        pct_ret = (current_total / capital) - 1
 
-        # Dividendos anuales estimados
-        div_df, monthly_totals = get_dividend_calendar()
-        total_div_anual_bruto = div_df['Div. Bruto'].sum()
-        total_div_anual_neto = div_df['Neto Final'].sum()
-        yield_on_cost = total_div_anual_bruto / CAPITAL_INICIAL
-
-        # --- VISUALIZACIÓN KPIs ---
-        k1, k2, k3, k4, k5 = st.columns(5)
+        # --- VISUALIZACIÓN ---
+        k1, k2, k3, k4 = st.columns(4)
         
-        k1.metric("Valor Actual", f"{current_total:,.0f} €", f"Inv: {CAPITAL_INICIAL:,.0f} €", delta_color="off")
-        k2.metric(f"Rentabilidad", f"{pct_ret:+.2%}", f"{abs_ret:+,.0f} €")
-        k3.metric("Div. Anual Bruto", f"{total_div_anual_bruto:,.0f} €", f"Yield: {yield_on_cost:.2%}")
-        k4.metric("Div. Anual Neto", f"{total_div_anual_neto:,.0f} €", f"Tras retenciones")
-        k5.metric("Ratio Sharpe", f"{sharpe_real:.2f}", f"DD: {max_dd_real:.2%}")
+        k1.metric("Valor Actual", f"{current_total:,.0f} €", f"Inv: {capital:,.0f} €", delta_color="off")
+        k2.metric(f"Rentabilidad (CAGR: {cagr_real:.1%})", f"{pct_ret:+.2%}", f"{abs_ret:+,.0f} €")
+        k3.metric("Drawdown", f"{dd_series.iloc[-1]:.2%}", f"Max: {max_dd_real:.2%}", delta_color="inverse")
+        k4.metric("Ratio Sharpe", f"{sharpe_real:.2f}")
         
         st.markdown("---")
         
         col_graph, col_table = st.columns([2, 1])
         
         with col_graph:
-            st.subheader("📈 Evolución del Valor")
+            st.subheader("📈 Evolución")
             
             if len(df_analysis) > 0:
                 start_plot_date = portfolio_series.index[0] - timedelta(days=1)
                 
-                row_init_val = pd.DataFrame({'Total': [CAPITAL_INICIAL]}, index=[start_plot_date])
+                row_init_val = pd.DataFrame({'Total': [capital]}, index=[start_plot_date])
                 plot_series_val = pd.concat([row_init_val, portfolio_series[['Total']]]).sort_index()
                 
                 row_init_dd = pd.Series([0.0], index=[start_plot_date])
@@ -446,7 +345,7 @@ with tab1:
                 st.write("Cargando...")
 
         with col_table:
-            st.subheader("⚖️ Estado Posiciones")
+            st.subheader("⚖️ Bandas (Abs ±10%)")
             
             rebal_data = []
             BAND_ABS = 0.10
@@ -454,285 +353,169 @@ with tab1:
             for t in tickers:
                 target = PORTFOLIO_CONFIG[t]['target']
                 n_shares = portfolio_shares[t]
-                buy_price = PORTFOLIO_CONFIG[t]['buy_price']
-                
-                if t in latest_prices.index:
-                    p_now = float(latest_prices[t]) if not pd.isna(latest_prices[t]) else buy_price
-                else:
-                    p_now = buy_price
-                    
+                p_now = float(latest_prices[t]) if not pd.isna(latest_prices[t]) else 0.0
                 val_act = n_shares * p_now
-                val_compra = n_shares * buy_price
-                pnl = val_act - val_compra
-                pnl_pct = (val_act / val_compra - 1) if val_compra > 0 else 0
-                
                 w_real = val_act / current_total if current_total > 0 else 0
                 
                 min_w = max(0, target - BAND_ABS)
                 max_w = target + BAND_ABS
                 
+                status = "✅ MANTENER"
+                
                 if w_real > max_w:
                     status = "🔴 VENDER"
                 elif w_real < min_w:
                     status = "🔵 COMPRAR"
-                else:
-                    status = "✅ OK"
                 
                 rebal_data.append({
-                    "Ticker": t,
-                    "Acc.": n_shares,
-                    "P.Compra": f"€{buy_price:.2f}",
-                    "P.Actual": f"€{p_now:.2f}",
-                    "Valor": f"€{val_act:,.0f}",
-                    "P&L": f"{pnl:+,.0f}€ ({pnl_pct:+.1%})",
-                    "Peso": f"{w_real:.1%}",
-                    "Estado": status
+                    "Ticker": t, "Acc.": n_shares, "Valor": f"{val_act:,.0f}€",
+                    "Peso": f"{w_real:.1%}", "Estado": status
                 })
                 
             df_rb = pd.DataFrame(rebal_data)
             
             def style_rebal(v):
-                if "VENDER" in str(v): return 'color: #991b1b; background-color: #fee2e2; font-weight: bold;'
-                if "COMPRAR" in str(v): return 'color: #1e40af; background-color: #dbeafe; font-weight: bold;'
-                if "OK" in str(v): return 'color: #166534; background-color: #dcfce7; font-weight: bold;'
-                return ''
+                if "VENDER" in v: return 'color: #991b1b; background-color: #fee2e2; font-weight: bold; border-radius: 4px; padding: 2px;'
+                if "COMPRAR" in v: return 'color: #1e40af; background-color: #dbeafe; font-weight: bold; border-radius: 4px; padding: 2px;'
+                return 'color: #166534; background-color: #dcfce7; font-weight: bold; border-radius: 4px; padding: 2px;'
                 
             st.dataframe(df_rb.style.applymap(style_rebal, subset=['Estado']), use_container_width=True, hide_index=True)
+            
+            st.markdown(f"""
+            <div style="background-color:#ffffff; padding:15px; border-radius:8px; margin-top:20px; border:1px solid #cbd5e1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <span style="color:#475569; font-size: 1.1rem; font-weight: 600;">Liquidez (Cash):</span>
+                <span style="color:#0f172a; font-weight:bold; float:right; font-size:1.3rem;">{cash_leftover:.2f} €</span>
+            </div>
+            """, unsafe_allow_html=True)
 
     else:
-        st.error("⚠️ Error de conexión con Yahoo Finance.")
+        st.error("⚠️ Error de conexión.")
 
-# --- TAB 2: CALENDARIO DIVIDENDOS ---
+# --- TAB 2: CALENDARIO DE DIVIDENDOS ---
 with tab2:
     st.subheader("📅 Calendario Anual de Dividendos")
     
-    div_df, monthly_totals = get_dividend_calendar()
+    # Información fiscal
+    st.markdown("""
+    <div style="background-color:#dbeafe; border-left:4px solid #2563eb; padding:15px; border-radius:0 8px 8px 0; margin-bottom:20px;">
+        <b>ℹ️ Información para inversores españoles:</b><br>
+        Los ETFs UCITS domiciliados en Irlanda/Luxemburgo no tienen retención en origen. 
+        En España se aplica una <b>retención del 19%</b> sobre los dividendos.
+    </div>
+    """, unsafe_allow_html=True)
     
-    # Resumen anual
-    total_bruto = div_df['Div. Bruto'].sum()
-    total_neto = div_df['Neto Final'].sum()
-    total_retencion = total_bruto - total_neto
+    # Calcular dividendos por mes
+    meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+    
+    dividend_calendar = []
+    monthly_totals = {i: 0 for i in range(1, 13)}
+    
+    for ticker, cfg in PORTFOLIO_CONFIG.items():
+        annual_div = cfg['dividend_per_share_annual'] * cfg['shares']
+        payments_per_year = len(cfg['dividend_months'])
+        div_per_payment = annual_div / payments_per_year
+        
+        row = {
+            'ETF': ticker,
+            'Nombre': cfg['name'],
+            'Acciones': cfg['shares'],
+            'Div/Acc Anual': f"€{cfg['dividend_per_share_annual']:.2f}",
+        }
+        
+        for i, mes in enumerate(meses, 1):
+            if i in cfg['dividend_months']:
+                row[mes] = f"€{div_per_payment:.2f}"
+                monthly_totals[i] += div_per_payment
+            else:
+                row[mes] = "-"
+        
+        row['Total Anual'] = f"€{annual_div:.2f}"
+        dividend_calendar.append(row)
+    
+    # Mostrar resumen
+    total_bruto = sum(cfg['dividend_per_share_annual'] * cfg['shares'] for cfg in PORTFOLIO_CONFIG.values())
+    total_retencion = total_bruto * RETENCION_ESPANA
+    total_neto = total_bruto - total_retencion
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("💵 Total Anual Bruto", f"€{total_bruto:,.2f}")
-    col2.metric("🏦 Total Retenciones", f"€{total_retencion:,.2f}", f"-{(total_retencion/total_bruto)*100:.1f}%")
-    col3.metric("💰 Total Anual Neto", f"€{total_neto:,.2f}")
-    col4.metric("📊 Yield Neto", f"{(total_neto/CAPITAL_INICIAL)*100:.2f}%")
+    col1.metric("💵 Dividendo Anual Bruto", f"€{total_bruto:,.2f}")
+    col2.metric("🏦 Retención España (19%)", f"-€{total_retencion:,.2f}")
+    col3.metric("💰 Dividendo Anual Neto", f"€{total_neto:,.2f}")
+    col4.metric("📊 Yield sobre coste", f"{(total_bruto/CAPITAL_INVERTIDO)*100:.2f}%")
     
     st.markdown("---")
     
-    # Calendario visual
+    # Calendario visual mensual
     st.markdown("### 📆 Distribución Mensual")
     
-    months_es = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-    
-    # Crear grid de meses
     cols = st.columns(6)
-    for i, month in enumerate(range(1, 13)):
-        col_idx = i % 6
-        with cols[col_idx]:
-            bruto = monthly_totals[month]['bruto']
-            neto = monthly_totals[month]['neto_final']
+    for i in range(12):
+        mes_num = i + 1
+        with cols[i % 6]:
+            total_mes = monthly_totals[mes_num]
+            neto_mes = total_mes * (1 - RETENCION_ESPANA)
             
-            if bruto > 0:
-                color_bg = "#d1fae5"
-                color_border = "#059669"
+            if total_mes > 0:
+                bg_color = "#dcfce7"
+                border_color = "#16a34a"
                 icon = "💰"
             else:
-                color_bg = "#f1f5f9"
-                color_border = "#cbd5e1"
+                bg_color = "#f1f5f9"
+                border_color = "#94a3b8"
                 icon = "📅"
             
             st.markdown(f"""
-            <div style="background-color:{color_bg}; border:2px solid {color_border}; 
-                        border-radius:10px; padding:15px; margin:5px 0; text-align:center;">
-                <div style="font-size:1.5rem;">{icon}</div>
-                <div style="font-weight:bold; color:#1e293b; font-size:1.1rem;">{months_es[month-1]}</div>
-                <div style="color:#059669; font-weight:600; font-size:1.2rem;">€{bruto:.2f}</div>
-                <div style="color:#64748b; font-size:0.85rem;">Neto: €{neto:.2f}</div>
+            <div style="background-color:{bg_color}; border:2px solid {border_color}; 
+                        border-radius:10px; padding:12px; margin:5px 0; text-align:center; min-height:120px;">
+                <div style="font-size:1.3rem;">{icon}</div>
+                <div style="font-weight:bold; color:#1e293b; font-size:1rem;">{meses[i]}</div>
+                <div style="color:#16a34a; font-weight:600; font-size:1.1rem;">€{total_mes:.2f}</div>
+                <div style="color:#64748b; font-size:0.8rem;">Neto: €{neto_mes:.2f}</div>
             </div>
             """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # Detalle por ETF y mes
-    st.markdown("### 📋 Detalle por ETF y Mes")
+    # Tabla detallada
+    st.markdown("### 📋 Detalle por ETF")
     
-    # Crear pivot table para visualización
-    pivot_data = []
-    for ticker, cfg in PORTFOLIO_CONFIG.items():
-        row = {'ETF': f"{ticker} - {cfg['name']}"}
-        annual_div = cfg['dividend_per_share'] * cfg['shares']
-        payments = len(cfg['dividend_months'])
-        per_payment = annual_div / payments
-        
-        for m in range(1, 13):
-            if m in cfg['dividend_months']:
-                row[months_es[m-1]] = f"€{per_payment:.2f}"
-            else:
-                row[months_es[m-1]] = "-"
-        row['Total Anual'] = f"€{annual_div:.2f}"
-        pivot_data.append(row)
+    df_div = pd.DataFrame(dividend_calendar)
     
-    pivot_df = pd.DataFrame(pivot_data)
-    
-    def highlight_dividends(val):
-        if val != "-" and val != "" and "€" in str(val):
-            return 'background-color: #d1fae5; color: #059669; font-weight: bold;'
+    def highlight_dividend(val):
+        if val != "-" and "€" in str(val) and float(val.replace("€", "")) > 0:
+            return 'background-color: #dcfce7; color: #166534; font-weight: bold;'
         return ''
     
-    st.dataframe(
-        pivot_df.style.applymap(highlight_dividends, subset=months_es),
-        use_container_width=True,
-        hide_index=True
-    )
-
-# --- TAB 3: DETALLE FISCAL ---
-with tab3:
-    st.subheader("🏛️ Información Fiscal para Inversores Españoles")
+    # Aplicar estilo solo a columnas de meses
+    styled_df = df_div.style.applymap(highlight_dividend, subset=meses)
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
     
-    # Información general
-    st.markdown("""
-    <div style="background-color:#fef3c7; border-left:4px solid #f59e0b; padding:20px; border-radius:0 8px 8px 0; margin:15px 0;">
-        <h4 style="color:#92400e; margin:0 0 10px 0;">⚠️ Aviso Importante</h4>
-        <p style="color:#78350f; margin:0;">
-        Los dividendos de ETFs extranjeros están sujetos a <b>doble imposición</b>: retención en el país de origen 
-        y tributación en España. Puede solicitar la <b>devolución del exceso de retención</b> en la declaración de la renta 
-        mediante la deducción por doble imposición internacional.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    
+    # Resumen fiscal
     st.markdown("---")
-    
-    # Tabla de retenciones por país
-    st.markdown("### 🌍 Retenciones por País de Origen")
-    
-    country_info = {
-        'DE': {'name': 'Alemania 🇩🇪', 'rate': 26.375, 'convenio': 15.0},
-        'NL': {'name': 'Países Bajos 🇳🇱', 'rate': 15.0, 'convenio': 15.0},
-        'IT': {'name': 'Italia 🇮🇹', 'rate': 26.0, 'convenio': 15.0},
-    }
-    
-    col1, col2, col3 = st.columns(3)
-    
-    for i, (code, info) in enumerate(country_info.items()):
-        with [col1, col2, col3][i]:
-            exceso = info['rate'] - info['convenio']
-            st.markdown(f"""
-            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:15px; height:200px;">
-                <h4 style="color:#1e293b; margin:0 0 10px 0;">{info['name']}</h4>
-                <p style="color:#64748b; margin:5px 0;"><b>Retención estándar:</b> {info['rate']}%</p>
-                <p style="color:#64748b; margin:5px 0;"><b>Límite convenio:</b> {info['convenio']}%</p>
-                <p style="color:#dc2626; margin:5px 0;"><b>Exceso recuperable:</b> {exceso:.2f}%</p>
-                <p style="color:#059669; margin:10px 0 0 0; font-size:0.85rem;">
-                    ✅ Puede solicitar devolución del {exceso:.2f}% al país origen
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Detalle fiscal por ETF
-    st.markdown("### 💶 Detalle Fiscal por ETF")
+    st.markdown("### 🏛️ Resumen Fiscal")
     
     fiscal_data = []
     for ticker, cfg in PORTFOLIO_CONFIG.items():
-        annual_div = cfg['dividend_per_share'] * cfg['shares']
-        ret_origen = annual_div * cfg['withholding_origin']
-        neto_origen = annual_div - ret_origen
-        
-        # Retención España sobre bruto
+        annual_div = cfg['dividend_per_share_annual'] * cfg['shares']
+        ret_origen = annual_div * cfg['withholding']
         ret_esp = annual_div * RETENCION_ESPANA
-        
-        # Crédito por doble imposición (límite: el menor entre retención origen y española)
-        credito = min(ret_origen, ret_esp)
-        
-        # Exceso de retención en origen (recuperable con formulario del país)
-        limite_convenio = annual_div * 0.15  # 15% es el límite típico de convenios
-        exceso_origen = max(0, ret_origen - limite_convenio)
-        
-        neto_final = annual_div - ret_origen - ret_esp + credito
+        neto = annual_div - ret_origen - ret_esp
         
         fiscal_data.append({
             'ETF': ticker,
-            'Nombre': cfg['name'],
-            'País': cfg['country'],
             'Dividendo Bruto': f"€{annual_div:.2f}",
-            'Ret. Origen': f"€{ret_origen:.2f} ({cfg['withholding_origin']*100:.1f}%)",
+            'Ret. Origen': f"€{ret_origen:.2f} ({cfg['withholding']*100:.0f}%)",
             'Ret. España': f"€{ret_esp:.2f} (19%)",
-            'Crédito Doble Imp.': f"€{credito:.2f}",
-            'Exceso Recuperable': f"€{exceso_origen:.2f}",
-            'Neto Estimado': f"€{neto_final:.2f}"
+            'Dividendo Neto': f"€{neto:.2f}",
         })
     
-    fiscal_df = pd.DataFrame(fiscal_data)
-    st.dataframe(fiscal_df, use_container_width=True, hide_index=True)
+    df_fiscal = pd.DataFrame(fiscal_data)
+    st.dataframe(df_fiscal, use_container_width=True, hide_index=True)
     
-    # Resumen fiscal total
-    st.markdown("---")
-    st.markdown("### 📊 Resumen Fiscal Anual")
-    
-    total_bruto = sum(cfg['dividend_per_share'] * cfg['shares'] for cfg in PORTFOLIO_CONFIG.values())
-    total_ret_origen = sum(cfg['dividend_per_share'] * cfg['shares'] * cfg['withholding_origin'] for cfg in PORTFOLIO_CONFIG.values())
-    total_ret_esp = total_bruto * RETENCION_ESPANA
-    total_credito = sum(min(cfg['dividend_per_share'] * cfg['shares'] * cfg['withholding_origin'], 
-                           cfg['dividend_per_share'] * cfg['shares'] * RETENCION_ESPANA) for cfg in PORTFOLIO_CONFIG.values())
-    total_neto = total_bruto - total_ret_origen - total_ret_esp + total_credito
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown(f"""
-        <div style="background:linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); 
-                    border-radius:12px; padding:25px; color:white;">
-            <h3 style="margin:0 0 20px 0; color:white;">📥 Ingresos</h3>
-            <div style="display:flex; justify-content:space-between; margin:10px 0;">
-                <span>Dividendos Brutos:</span>
-                <span style="font-weight:bold; font-size:1.2rem;">€{total_bruto:,.2f}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-        <div style="background:linear-gradient(135deg, #991b1b 0%, #dc2626 100%); 
-                    border-radius:12px; padding:25px; color:white;">
-            <h3 style="margin:0 0 20px 0; color:white;">📤 Retenciones</h3>
-            <div style="display:flex; justify-content:space-between; margin:8px 0;">
-                <span>Retención Origen:</span>
-                <span style="font-weight:bold;">-€{total_ret_origen:,.2f}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; margin:8px 0;">
-                <span>Retención España:</span>
-                <span style="font-weight:bold;">-€{total_ret_esp:,.2f}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; margin:8px 0; color:#86efac;">
-                <span>Crédito Doble Imposición:</span>
-                <span style="font-weight:bold;">+€{total_credito:,.2f}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg, #059669 0%, #10b981 100%); 
-                border-radius:12px; padding:25px; color:white; margin-top:20px; text-align:center;">
-        <h3 style="margin:0 0 10px 0; color:white;">💰 DIVIDENDO NETO ANUAL ESTIMADO</h3>
-        <div style="font-size:2.5rem; font-weight:bold;">€{total_neto:,.2f}</div>
-        <div style="font-size:1.1rem; opacity:0.9;">Rendimiento neto sobre coste: {(total_neto/CAPITAL_INICIAL)*100:.2f}%</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Notas finales
     st.markdown("""
-    <div style="background:#f1f5f9; border-radius:8px; padding:20px; margin-top:30px;">
-        <h4 style="color:#475569;">📝 Notas Importantes:</h4>
-        <ul style="color:#64748b;">
-            <li>Los importes de dividendos son <b>estimaciones</b> basadas en yields históricos.</li>
-            <li>La retención en España del 19% se aplica en la declaración de la renta.</li>
-            <li>Para recuperar el exceso de retención en origen, debe presentar el formulario correspondiente al país (ej: formulario para Alemania).</li>
-            <li>El crédito por doble imposición se aplica automáticamente en la declaración.</li>
-            <li>Consulte con un asesor fiscal para su situación particular.</li>
-        </ul>
+    <div style="background-color:#fef3c7; border-left:4px solid #f59e0b; padding:15px; border-radius:0 8px 8px 0; margin-top:20px;">
+        <b>⚠️ Nota:</b> Los importes de dividendos son <b>estimaciones</b> basadas en yields históricos. 
+        Los dividendos reales pueden variar. Los ETFs domiciliados en Irlanda/Luxemburgo generalmente 
+        no aplican retención en origen para inversores de la UE.
     </div>
     """, unsafe_allow_html=True)
