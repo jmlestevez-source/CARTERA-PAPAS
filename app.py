@@ -143,7 +143,7 @@ st.markdown("""
 
 # --- 2. DATOS DE LA CARTERA ---
 PORTFOLIO_CONFIG = {
-    'IQEM.DE': {  # iShares EURO STOXX Mid Cap
+    'IQQM.DE': {  # iShares EURO STOXX Mid Cap
         'name': 'iShares EURO STOXX Mid',
         'shares': 27,
         'buy_price': 78.25,
