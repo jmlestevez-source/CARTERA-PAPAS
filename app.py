@@ -6,349 +6,306 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, date, timedelta
 
-# --- 1. CONFIGURACIÓN VISUAL (ESTILO CLARO/PROFESIONAL) ---
-st.set_page_config(page_title="Cartera Permanente Pro", layout="wide", page_icon="🛡️")
+# --- 1. CONFIGURACIÓN VISUAL ---
+st.set_page_config(page_title="Cartera de Inversión", layout="wide", page_icon="🛡️")
 
 st.markdown("""
 <style>
-    /* =============================================
-       1. PANEL PRINCIPAL (FONDO CLARO)
-       ============================================= */
-    .stApp { 
-        background-color: #f8fafc !important; /* Gris Perla muy suave */
-    }
-    
-    /* Títulos principales en COLOR OSCURO para que se lean bien */
-    .main h1, .main h2, .main h3 {
-        color: #1e293b !important; /* Gris azulado oscuro */
-        font-family: 'Segoe UI', sans-serif;
-        font-weight: 800;
-    }
-    
-    /* Texto normal en oscuro */
-    .main p, .main li, .main div {
-        color: #334155;
-    }
+    /* PANEL PRINCIPAL */
+    .stApp { background-color: #f8fafc !important; }
+    .main h1, .main h2, .main h3 { color: #1e293b !important; font-family: 'Segoe UI', sans-serif; font-weight: 800; }
+    .main p, .main li, .main div { color: #334155; }
 
-    /* =============================================
-       2. BARRA LATERAL (SIDEBAR) - OSCURA
-       ============================================= */
-    section[data-testid="stSidebar"] {
-        min-width: 350px !important;
-        width: 350px !important;
-        background-color: #0f172a !important; /* Azul Noche */
-    }
-    
-    /* Textos del Sidebar en BLANCO */
-    section[data-testid="stSidebar"] h1, 
-    section[data-testid="stSidebar"] h2, 
-    section[data-testid="stSidebar"] h3, 
-    section[data-testid="stSidebar"] label, 
-    section[data-testid="stSidebar"] span, 
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] div {
-        color: #f8fafc !important;
-    }
+    /* SIDEBAR */
+    section[data-testid="stSidebar"] { background-color: #0f172a !important; min-width: 300px !important; }
+    section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p { color: #f8fafc !important; }
+    div[data-baseweb="input"], div[data-baseweb="base-input"] { background-color: #1e293b !important; border: 1px solid #475569 !important; }
+    input[class*="st-"] { color: #ffffff !important; }
+    div[data-testid="stDateInput"] svg { fill: white !important; }
+    section[data-testid="stSidebar"] button { background-color: #2563eb !important; color: white !important; border: none !important; }
 
-    /* Inputs del Sidebar (Fondo oscuro, texto blanco) */
-    div[data-baseweb="input"], div[data-baseweb="base-input"] {
-        background-color: #1e293b !important; 
-        border: 1px solid #475569 !important;
-    }
-    input[class*="st-"] {
-        color: #ffffff !important;
-    }
-    div[data-baseweb="select"] svg, div[data-testid="stDateInput"] svg {
-        fill: white !important;
-    }
+    /* MÉTRICAS */
+    div[data-testid="stMetric"] { background-color: #ffffff !important; border: 1px solid #e2e8f0; border-left: 6px solid #2563eb; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    div[data-testid="stMetricValue"] div { font-size: 2.0rem !important; color: #0f172a !important; font-weight: 800 !important; }
+    div[data-testid="stMetricLabel"] p { font-size: 1.0rem !important; color: #64748b !important; font-weight: 600 !important; }
     
-    /* Botón Recargar */
-    section[data-testid="stSidebar"] button {
-        background-color: #2563eb !important; /* Azul fuerte */
-        color: white !important;
-        font-weight: bold;
-        border: none !important;
-    }
-
-    /* =============================================
-       3. TARJETAS DE MÉTRICAS (ESTILO BANCA)
-       ============================================= */
-    section[data-testid="stMain"] div[data-testid="stMetric"] {
-        background-color: #ffffff !important; /* Blanco Puro */
-        border: 1px solid #e2e8f0;
-        border-left: 6px solid #2563eb; /* Borde Azul */
-        border-radius: 8px;
-        padding: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-
-    /* VALOR PRINCIPAL (Grande y Oscuro) */
-    section[data-testid="stMain"] div[data-testid="stMetricValue"] div {
-        font-size: 2.4rem !important; 
-        color: #0f172a !important; /* Casi negro */
-        font-weight: 800 !important;
-    }
-
-    /* ETIQUETA SUPERIOR (Ej: Valor Actual) */
-    section[data-testid="stMain"] div[data-testid="stMetricLabel"] p {
-        font-size: 1.1rem !important;
-        color: #64748b !important; /* Gris medio */
-        font-weight: 600 !important;
-    }
-    
-    /* --- AUMENTO DE TAMAÑO PARA DELTAS (Ganancia/Pérdida y Drawdown) --- */
-    section[data-testid="stMain"] div[data-testid="stMetricDelta"] div {
-        font-size: 1.3rem !important; /* AUMENTADO (Antes era pequeño) */
-        font-weight: 700 !important;
-    }
-    
-    /* Ajuste específico para el icono de flecha */
-    section[data-testid="stMain"] div[data-testid="stMetricDelta"] svg {
-        transform: scale(1.3);
-        margin-right: 5px;
-    }
-
-    /* =============================================
-       4. TABLAS Y GRÁFICOS
-       ============================================= */
-    .stDataFrame { 
-        border: 1px solid #cbd5e1; 
-    }
-    
+    /* TABLAS */
+    .stDataFrame { border: 1px solid #cbd5e1; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. DATOS ---
-PORTFOLIO_CONFIG = {
-    'DJMC.AS': {'name': 'iShares Euro Stoxx Mid', 'target': 0.30},
-    'EXH9.DE': {'name': 'iShares Stoxx 600 Util', 'target': 0.129},
-    'ISPA.DE': {'name': 'iShares Global Div 100', 'target': 0.171},
-    'IUSM.DE': {'name': 'iShares Treasury 7-10yr', 'target': 0.30},
-    'SYBJ.DE': {'name': 'SPDR Euro High Yield', 'target': 0.10}
+# --- 2. DATOS DE LA CARTERA ---
+# Estructura: Ticker: {Nombre, Acciones, Precio_Compra_Original, Meses_Div_Tipicos}
+PORTFOLIO_DATA = {
+    'iQQM.DE': {
+        'name': 'iShares EURO STOXX Mid', 
+        'shares': 27, 
+        'buy_price': 78.25,
+        'div_months': 'Mar, Jun, Sep, Dic'
+    },
+    'TDIV.AS': {
+        'name': 'Vanguard Div. Leaders', 
+        'shares': 83, 
+        'buy_price': 46.72,
+        'div_months': 'Mar, Jun, Sep, Dic'
+    },
+    'EHDV.DE': {
+        'name': 'Invesco Euro High Div Low Vol', 
+        'shares': 59, 
+        'buy_price': 31.60,
+        'div_months': 'Mar, Jun, Sep, Dic'
+    },
+    'IUSM.DE': {
+        'name': 'iShares USD Treasury 7-10yr', 
+        'shares': 220, 
+        'buy_price': 151.51,
+        'div_months': 'Semestral (Feb, Ago) o Trim.'
+    },
+    'JNKE.MI': {
+        'name': 'SPDR Bloomberg Euro High Yield', 
+        'shares': 37, 
+        'buy_price': 52.13,
+        'div_months': 'Feb, Ago'
+    }
 }
 
-BENCHMARK_STATS = {
-    "CAGR": "6.77%", "Sharpe": "0.572", "Volatilidad": "8.77%", "Max DD": "-21.19%"
-}
+TICKERS = list(PORTFOLIO_DATA.keys())
 
 # --- 3. FUNCIONES ---
 @st.cache_data(ttl=3600, show_spinner=False) 
-def get_market_data_cached(tickers):
-    start_date = datetime.now() - timedelta(days=365*5)
+def get_market_data(tickers):
+    # Descargamos historia suficiente para gráficas
+    start_download = datetime.now() - timedelta(days=365*3)
     try:
-        data = yf.download(tickers, start=start_date, progress=False, auto_adjust=True)
+        data = yf.download(tickers, start=start_download, progress=False, auto_adjust=False) # auto_adjust=False para tener Close real
+        # Manejo seguro de MultiIndex
         if isinstance(data.columns, pd.MultiIndex):
             if 'Close' in data.columns.get_level_values(0):
                 df = data['Close']
             else:
-                df = data.iloc[:, :len(tickers)]
+                df = data.iloc[:, :len(tickers)] # Fallback
         elif 'Close' in data.columns:
             df = data['Close']
         else:
             df = data
         return df
-    except Exception:
+    except Exception as e:
+        st.error(f"Error descargando datos: {e}")
         return pd.DataFrame()
 
-def calculate_metrics(series, capital_inicial):
-    if series.empty or len(series) < 2: 
-        return 0.0, 0.0, 0.0, pd.Series(0, index=series.index)
-    
-    ret = series.pct_change().fillna(0)
-    days = (series.index[-1] - series.index[0]).days
-    current_val = series.iloc[-1]
-    
-    if days > 0:
-        total_ret = (current_val / capital_inicial) - 1
-        cagr = (1 + total_ret)**(365.25/days) - 1 if total_ret > -0.9 else 0
-    else:
-        cagr = 0.0
-    
-    rolling_max = series.cummax()
-    dd = (series - rolling_max) / rolling_max
-    max_dd = dd.min()
-    
-    rf = 0.03
-    if ret.std() > 0:
-        excess_ret = ret - (rf/252)
-        sharpe = np.sqrt(252) * excess_ret.mean() / ret.std()
-    else:
-        sharpe = 0.0
-        
-    return cagr, max_dd, sharpe, dd
+def get_dividend_info(tickers):
+    """Obtiene info de dividendos (Yield y último pago)"""
+    div_info = {}
+    for t in tickers:
+        try:
+            ticker_obj = yf.Ticker(t)
+            info = ticker_obj.info
+            # Intentar obtener yield actual
+            yield_pct = info.get('dividendYield', 0)
+            if yield_pct is None: yield_pct = 0
+            
+            div_info[t] = {
+                'yield': yield_pct,
+                'currency': info.get('currency', 'EUR')
+            }
+        except:
+            div_info[t] = {'yield': 0, 'currency': 'EUR'}
+    return div_info
 
 # --- 4. SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Configuración")
     
-    capital = st.number_input("Capital Inicial (€)", value=13000, step=500)
-    start_date = st.date_input("Fecha Inicio Inversión", value=date.today())
+    # FECHA POR DEFECTO MODIFICADA A 01/12/2025
+    default_date = date(2025, 12, 1)
+    start_date = st.date_input("Fecha Inicio Análisis", value=default_date)
     
+    if start_date > date.today():
+        st.warning("⚠️ La fecha seleccionada es futura. No habrá datos históricos para graficar hasta que llegue esa fecha.")
+
     if st.button("🔄 Recargar Datos"):
         st.cache_data.clear()
         st.rerun()
     
     st.markdown("---")
-    st.subheader("📜 Benchmark Histórico")
-    
-    col_b1, col_b2 = st.columns(2)
-    col_b1.metric("CAGR", BENCHMARK_STATS["CAGR"])
-    col_b1.metric("Max DD", BENCHMARK_STATS["Max DD"])
-    col_b2.metric("Sharpe", BENCHMARK_STATS["Sharpe"])
-    col_b2.metric("Volat.", BENCHMARK_STATS["Volatilidad"])
+    st.info("Cartera configurada con posiciones fijas (Stock/Bonos).")
 
 # --- 5. LÓGICA PRINCIPAL ---
-st.title("Dashboard de Cartera")
+st.title("Dashboard de Cartera Personal")
 
-tickers = list(PORTFOLIO_CONFIG.keys())
-with st.spinner('Actualizando precios...'):
-    full_df = get_market_data_cached(tickers)
+with st.spinner('Actualizando precios y dividendos...'):
+    full_df = get_market_data(TICKERS)
+    div_data = get_dividend_info(TICKERS)
 
 if not full_df.empty:
+    # Preparación de datos de precios
     full_df.index = pd.to_datetime(full_df.index)
+    latest_prices = full_df.ffill().iloc[-1]
     
-    df_analysis = full_df[full_df.index >= pd.to_datetime(start_date)].copy()
-    df_analysis = df_analysis.ffill().dropna()
+    # --- CÁLCULOS DE POSICIÓN ---
+    total_invested = 0
+    total_current_value = 0
+    portfolio_rows = []
 
-    if len(df_analysis) == 0:
-        last_known = full_df.ffill().iloc[-1]
-        df_analysis = pd.DataFrame([last_known], index=[pd.to_datetime(start_date)])
-
-    # --- MOTOR ---
-    initial_prices = df_analysis.ffill().iloc[0]
-    latest_prices = df_analysis.ffill().iloc[-1]
-    
-    portfolio_series = pd.DataFrame(index=df_analysis.index)
-    portfolio_series['Total'] = 0
-    portfolio_shares = {}
-    invested_cash = 0
-    
-    for t in tickers:
-        target_w = PORTFOLIO_CONFIG[t]['target']
-        budget = capital * target_w
-        price_val = float(initial_prices[t])
+    for t in TICKERS:
+        data = PORTFOLIO_DATA[t]
+        shares = data['shares']
+        buy_price = data['buy_price']
+        curr_price = latest_prices[t]
         
-        if pd.isna(price_val) or price_val <= 0:
-            n_shares = 0
-        else:
-            n_shares = int(budget // price_val)
-            
-        portfolio_shares[t] = n_shares
-        invested_cash += n_shares * price_val
-        portfolio_series['Total'] += df_analysis[t] * n_shares
+        invested = shares * buy_price
+        current_val = shares * curr_price
+        pl_euro = current_val - invested
+        pl_pct = (pl_euro / invested) if invested > 0 else 0
         
-    cash_leftover = capital - invested_cash
-    portfolio_series['Total'] += cash_leftover
-    current_total = portfolio_series['Total'].iloc[-1]
-    
-    # --- KPIs ---
-    cagr_real, max_dd_real, sharpe_real, dd_series = calculate_metrics(portfolio_series['Total'], capital)
-    abs_ret = current_total - capital
-    pct_ret = (current_total / capital) - 1
+        total_invested += invested
+        total_current_value += current_val
+        
+        portfolio_rows.append({
+            "Ticker": t,
+            "Nombre": data['name'],
+            "Acciones": shares,
+            "P. Compra": f"{buy_price:.2f} €",
+            "P. Actual": f"{curr_price:.2f} €",
+            "Inversión": invested,
+            "Valor Actual": current_val,
+            "P&L (€)": pl_euro,
+            "P&L (%)": pl_pct
+        })
 
-    # --- VISUALIZACIÓN ---
+    # Totales Globales
+    global_pl = total_current_value - total_invested
+    global_pl_pct = (global_pl / total_invested) if total_invested > 0 else 0
+
+    # --- INTERFAZ DE USUARIO ---
+    
+    # 1. KPIs Superiores
     k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Valor Total", f"{total_current_value:,.0f} €", f"Inv: {total_invested:,.0f} €")
+    k2.metric("P&L Total", f"{global_pl:+,.0f} €", f"{global_pl_pct:+.2%}")
     
-    k1.metric("Valor Actual", f"{current_total:,.0f} €", f"Inv: {capital:,.0f} €", delta_color="off")
-    k2.metric(f"Rentabilidad (CAGR: {cagr_real:.1%})", f"{pct_ret:+.2%}", f"{abs_ret:+,.0f} €")
-    k3.metric("Drawdown", f"{dd_series.iloc[-1]:.2%}", f"Max: {max_dd_real:.2%}", delta_color="inverse")
-    k4.metric("Ratio Sharpe", f"{sharpe_real:.2f}")
+    # Drawdown simple (basado en historia reciente del portfolio sintético)
+    # Creamos una serie histórica del valor actual de la cartera
+    hist_value = pd.Series(0, index=full_df.index)
+    for t in TICKERS:
+        hist_value += full_df[t] * PORTFOLIO_DATA[t]['shares']
     
-    st.markdown("---")
-    
-    col_graph, col_table = st.columns([2, 1])
-    
-    with col_graph:
-        st.subheader("📈 Evolución")
+    # Filtramos por fecha seleccionada (si es pasada)
+    if start_date <= date.today():
+        hist_view = hist_value[hist_value.index >= pd.to_datetime(start_date)]
+    else:
+        hist_view = hist_value.tail(100) # Si fecha futura, mostramos últimos 100 días disponibles
+
+    if not hist_view.empty:
+        rolling_max = hist_view.cummax()
+        dd = (hist_view - rolling_max) / rolling_max
+        max_dd = dd.min()
+        k3.metric("Max Drawdown (Periodo)", f"{max_dd:.2%}", "Desde Máximo")
+    else:
+        k3.metric("Max Drawdown", "N/A")
         
-        if len(df_analysis) > 0:
-            start_plot_date = portfolio_series.index[0] - timedelta(days=1)
-            
-            row_init_val = pd.DataFrame({'Total': [capital]}, index=[start_plot_date])
-            plot_series_val = pd.concat([row_init_val, portfolio_series[['Total']]]).sort_index()
-            
-            row_init_dd = pd.Series([0.0], index=[start_plot_date])
-            plot_series_dd = pd.concat([row_init_dd, dd_series]).sort_index()
-            
-            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.05)
-            
-            # Grafico Valor (Azul profesional)
+    k4.metric("Posiciones", f"{len(TICKERS)}")
+
+    st.markdown("---")
+
+    # --- TABS DE DETALLE ---
+    tab1, tab2, tab3 = st.tabs(["📊 Resumen y Posiciones", "📈 Gráfico Evolución", "💰 Calendario Dividendos"])
+
+    with tab1:
+        st.subheader("Detalle de Posiciones")
+        df_port = pd.DataFrame(portfolio_rows)
+        
+        # Formateo para visualización
+        df_display = df_port.copy()
+        df_display['Inversión'] = df_display['Inversión'].map('{:,.0f} €'.format)
+        df_display['Valor Actual'] = df_display['Valor Actual'].map('{:,.0f} €'.format)
+        df_display['P&L (€)'] = df_display['P&L (€)'].map('{:+,.0f} €'.format)
+        df_display['P&L (%)'] = df_display['P&L (%)'].map('{:+.2%}'.format)
+        
+        st.dataframe(
+            df_display[["Ticker", "Nombre", "Acciones", "P. Compra", "P. Actual", "Inversión", "Valor Actual", "P&L (€)", "P&L (%)"]],
+            use_container_width=True,
+            hide_index=True
+        )
+
+    with tab2:
+        st.subheader("Evolución del Valor de la Cartera")
+        if not hist_view.empty:
+            fig = go.Figure()
             fig.add_trace(go.Scatter(
-                x=plot_series_val.index, y=plot_series_val['Total'], 
-                name="Valor", mode='lines',
-                line=dict(color='#2563eb', width=3), # Azul standard
-                fill=None 
-            ), row=1, col=1)
+                x=hist_view.index, y=hist_view,
+                mode='lines', name='Valor Cartera',
+                line=dict(color='#2563eb', width=3),
+                fill='tozeroy', fillcolor='rgba(37, 99, 235, 0.1)'
+            ))
             
-            # Grafico Riesgo (Rojo)
+            # Línea de inversión inicial (Costo base constante)
             fig.add_trace(go.Scatter(
-                x=plot_series_dd.index, y=plot_series_dd, 
-                name="DD", mode='lines',
-                line=dict(color='#dc2626', width=1), 
-                fill='tozeroy', fillcolor='rgba(220, 38, 38, 0.1)'
-            ), row=2, col=1)
-            
-            fig.update_layout(height=480, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-                              showlegend=False, hovermode="x unified", margin=dict(l=0,r=0,t=0,b=0), 
-                              font=dict(color='#334155')) # Texto del gráfico en gris oscuro
-            
-            fig.update_yaxes(gridcolor='#e2e8f0', row=1, col=1, autorange=True)
-            fig.update_yaxes(tickformat=".0%", gridcolor='#e2e8f0', row=2, col=1)
-            fig.update_xaxes(gridcolor='#e2e8f0')
-            
+                x=hist_view.index, y=[total_invested]*len(hist_view),
+                mode='lines', name='Capital Invertido',
+                line=dict(color='#64748b', width=2, dash='dash')
+            ))
+
+            fig.update_layout(height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                              xaxis_title="Fecha", yaxis_title="Valor (€)", hovermode="x unified")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.write("Cargando...")
+            st.info("No hay datos históricos suficientes para la fecha seleccionada.")
 
-    with col_table:
-        st.subheader("⚖️ Bandas (Abs ±10%)")
+    with tab3:
+        st.subheader("Estimación de Dividendos y Fiscalidad (España)")
+        st.markdown("""
+        <small>Cálculo estimado basado en el *Yield* anualizado actual. 
+        La retención aplicada es del <b>19%</b> (IRPF base ahorro España). 
+        Los importes son aproximados y pueden variar según el tipo de cambio y anuncios de la gestora.</small>
+        """, unsafe_allow_html=True)
         
-        rebal_data = []
-        BAND_ABS = 0.10
+        div_rows = []
+        total_annual_gross = 0
+        total_annual_net = 0
         
-        for t in tickers:
-            target = PORTFOLIO_CONFIG[t]['target']
-            n_shares = portfolio_shares[t]
-            p_now = float(latest_prices[t]) if not pd.isna(latest_prices[t]) else 0.0
-            val_act = n_shares * p_now
-            w_real = val_act / current_total if current_total > 0 else 0
+        RETENCION_ESP = 0.19
+
+        for t in TICKERS:
+            shares = PORTFOLIO_DATA[t]['shares']
+            curr_price = latest_prices[t]
+            yield_dec = div_data[t]['yield']
             
-            min_w = max(0, target - BAND_ABS)
-            max_w = target + BAND_ABS
+            # Cálculo Anual Estimado
+            gross_annual = (curr_price * yield_dec) * shares
+            retention = gross_annual * RETENCION_ESP
+            net_annual = gross_annual - retention
             
-            status = "✅ MANTENER"
+            total_annual_gross += gross_annual
+            total_annual_net += net_annual
             
-            if w_real > max_w:
-                status = "🔴 VENDER"
-                surplus = val_act - (current_total * target)
-                op_txt = f"Venta: {surplus:.0f}€"
-            elif w_real < min_w:
-                status = "🔵 COMPRAR"
-                deficit = (current_total * target) - val_act
-                op_txt = f"Compra: {deficit:.0f}€"
-            else:
-                op_txt = "-"
-            
-            rebal_data.append({
-                "Ticker": t, "Acc.": n_shares, "Valor": f"{val_act:,.0f}€",
-                "Peso": f"{w_real:.1%}", "Estado": status
+            div_rows.append({
+                "ETF": PORTFOLIO_DATA[t]['name'],
+                "Meses Típicos de Cobro": PORTFOLIO_DATA[t]['div_months'],
+                "Yield Actual": f"{yield_dec:.2%}",
+                "Bruto Estimado (Año)": gross_annual,
+                "Retención (19%)": retention,
+                "Neto Estimado (Año)": net_annual
             })
             
-        df_rb = pd.DataFrame(rebal_data)
+        df_divs = pd.DataFrame(div_rows)
         
-        def style_rebal(v):
-            if "VENDER" in v: return 'color: #991b1b; background-color: #fee2e2; font-weight: bold; border-radius: 4px; padding: 2px;'
-            if "COMPRAR" in v: return 'color: #1e40af; background-color: #dbeafe; font-weight: bold; border-radius: 4px; padding: 2px;'
-            return 'color: #166534; background-color: #dcfce7; font-weight: bold; border-radius: 4px; padding: 2px;'
-            
-        st.dataframe(df_rb.style.applymap(style_rebal, subset=['Estado']), use_container_width=True, hide_index=True)
+        # Métricas de Dividendos
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Dividendo Anual Bruto", f"{total_annual_gross:,.2f} €")
+        d2.metric("Retención Hda. (19%)", f"-{total_annual_gross * RETENCION_ESP:,.2f} €", delta_color="inverse")
+        d3.metric("Dividendo Anual Neto", f"{total_annual_net:,.2f} €", delta_color="normal")
         
-        st.markdown(f"""
-        <div style="background-color:#ffffff; padding:15px; border-radius:8px; margin-top:20px; border:1px solid #cbd5e1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <span style="color:#475569; font-size: 1.1rem; font-weight: 600;">Liquidez (Cash):</span>
-            <span style="color:#0f172a; font-weight:bold; float:right; font-size:1.3rem;">{cash_leftover:.2f} €</span>
-        </div>
-        """, unsafe_allow_html=True)
+        # Formato tabla dividendos
+        st.markdown("#### Desglose por ETF")
+        
+        # Aplicar formato moneda para visualizar
+        df_div_show = df_divs.copy()
+        df_div_show["Bruto Estimado (Año)"] = df_divs["Bruto Estimado (Año)"].map('{:,.2f} €'.format)
+        df_div_show["Retención (19%)"] = df_divs["Retención (19%)"].map('{:,.2f} €'.format)
+        df_div_show["Neto Estimado (Año)"] = df_divs["Neto Estimado (Año)"].map('{:,.2f} €'.format)
+        
+        st.dataframe(df_div_show, use_container_width=True, hide_index=True)
 
 else:
-    st.error("⚠️ Error de conexión.")
+    st.error("⚠️ No se pudieron cargar los datos de mercado. Revisa tu conexión a internet.")
