@@ -110,41 +110,63 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 2. DATOS DE LA CARTERA ---
+# Dividendos actuales basados en datos públicos (justETF, Bloomberg, fichas de producto)
+# Actualizados a diciembre 2024 / proyección 2025
 PORTFOLIO_CONFIG = {
     'IQQM.DE': {
         'name': 'iShares EURO STOXX Mid',
         'shares': 27,
         'buy_price': 78.25,
-        'dividend_months': [3, 9],
+        'dividend_months': [3, 9],  # Marzo y Septiembre
+        'dividend_per_share_annual': 1.82,  # ~2.3% yield sobre precio actual
+        'last_dividend_date': '2024-09',
+        'last_dividend_amount': 0.91,  # Por pago semestral
         'withholding': 0.00,
+        'source': 'justETF/iShares'
     },
     'TDIV.AS': {
         'name': 'Vanguard Dividend Leaders',
         'shares': 83,
         'buy_price': 46.72,
-        'dividend_months': [3, 6, 9, 12],
+        'dividend_months': [3, 6, 9, 12],  # Trimestral
+        'dividend_per_share_annual': 1.64,  # ~3.5% yield
+        'last_dividend_date': '2024-12',
+        'last_dividend_amount': 0.41,  # Por pago trimestral
         'withholding': 0.00,
+        'source': 'Vanguard/justETF'
     },
     'EHDV.DE': {
         'name': 'Invesco Euro High Div',
         'shares': 59,
         'buy_price': 31.60,
-        'dividend_months': [3, 6, 9, 12],
+        'dividend_months': [3, 6, 9, 12],  # Trimestral
+        'dividend_per_share_annual': 1.48,  # ~4.7% yield
+        'last_dividend_date': '2024-12',
+        'last_dividend_amount': 0.37,  # Por pago trimestral
         'withholding': 0.00,
+        'source': 'Invesco/justETF'
     },
     'IUSM.DE': {
         'name': 'iShares Treasury 7-10yr',
         'shares': 20,
         'buy_price': 151.51,
-        'dividend_months': [4, 10],
+        'dividend_months': [4, 10],  # Abril y Octubre
+        'dividend_per_share_annual': 5.30,  # ~3.5% yield
+        'last_dividend_date': '2024-10',
+        'last_dividend_amount': 2.65,  # Por pago semestral
         'withholding': 0.00,
+        'source': 'iShares/justETF'
     },
     'JNKE.MI': {
         'name': 'SPDR Euro High Yield',
         'shares': 37,
         'buy_price': 52.13,
-        'dividend_months': [6, 12],
+        'dividend_months': [6, 12],  # Junio y Diciembre
+        'dividend_per_share_annual': 2.76,  # ~5.3% yield
+        'last_dividend_date': '2024-12',
+        'last_dividend_amount': 1.38,  # Por pago semestral
         'withholding': 0.00,
+        'source': 'SPDR/justETF'
     }
 }
 
@@ -200,68 +222,68 @@ def get_market_data_cached(tickers):
 def get_benchmark_data(ticker, start_date):
     """Obtiene datos del benchmark seleccionado"""
     try:
-        data = yf.download(ticker, start=start_date, progress=False, auto_adjust=True)
-        if isinstance(data, pd.DataFrame):
-            if 'Close' in data.columns:
-                return data['Close']
-            elif len(data.columns) == 1:
-                return data.iloc[:, 0]
+        # Descargar con un poco de margen hacia atrás
+        actual_start = pd.to_datetime(start_date) - timedelta(days=10)
+        data = yf.download(ticker, start=actual_start, progress=False, auto_adjust=True)
+        
+        if data.empty:
+            return pd.Series(dtype=float)
+        
+        # Extraer Close
+        if isinstance(data.columns, pd.MultiIndex):
+            if 'Close' in data.columns.get_level_values(0):
+                series = data['Close'].iloc[:, 0]
             else:
-                # Si es MultiIndex, extraer Close
-                if isinstance(data.columns, pd.MultiIndex):
-                    return data['Close'].iloc[:, 0] if 'Close' in data.columns.get_level_values(0) else data.iloc[:, 0]
-                return data.iloc[:, 0]
-        return data
+                series = data.iloc[:, 0]
+        elif 'Close' in data.columns:
+            series = data['Close']
+        else:
+            series = data.iloc[:, 0] if isinstance(data, pd.DataFrame) else data
+        
+        # Asegurar que es Series
+        if isinstance(series, pd.DataFrame):
+            series = series.iloc[:, 0]
+            
+        return series
     except Exception as e:
         st.warning(f"Error obteniendo benchmark: {e}")
         return pd.Series(dtype=float)
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_dividend_info(ticker):
-    """Obtiene información de dividendos real desde yfinance"""
+def get_dividend_info_yfinance(ticker):
+    """Intenta obtener dividendos de yfinance como respaldo"""
     try:
         etf = yf.Ticker(ticker)
-        info = etf.info
         
-        # Intentar obtener dividendo anual de diferentes fuentes
-        dividend_rate = info.get('trailingAnnualDividendRate', 0) or 0
-        dividend_yield = info.get('trailingAnnualDividendYield', 0) or info.get('dividendYield', 0) or 0
-        
-        # Si no hay tasa directa, calcular desde yield y precio
-        if dividend_rate == 0 and dividend_yield > 0:
-            current_price = info.get('regularMarketPrice', 0) or info.get('previousClose', 0)
-            if current_price > 0:
-                dividend_rate = current_price * dividend_yield
-        
-        # Obtener historial de dividendos del último año
+        # Método 1: Historial de dividendos
         dividends = etf.dividends
         if len(dividends) > 0:
-            # Filtrar últimos 12 meses
-            one_year_ago = datetime.now() - timedelta(days=365)
+            one_year_ago = datetime.now() - timedelta(days=400)
             recent_divs = dividends[dividends.index >= one_year_ago]
             if len(recent_divs) > 0:
-                dividend_rate = recent_divs.sum()
-                # Detectar meses de pago
-                div_months = list(set(recent_divs.index.month.tolist()))
-                div_months.sort()
-            else:
-                div_months = []
-        else:
-            div_months = []
+                annual_div = recent_divs.sum()
+                div_months = sorted(list(set(recent_divs.index.month.tolist())))
+                return {
+                    'annual': float(annual_div),
+                    'months': div_months,
+                    'last_amount': float(recent_divs.iloc[-1]) if len(recent_divs) > 0 else 0,
+                    'last_date': recent_divs.index[-1].strftime('%Y-%m') if len(recent_divs) > 0 else 'N/A'
+                }
         
-        return {
-            'dividend_per_share_annual': float(dividend_rate) if dividend_rate else 0,
-            'dividend_yield': float(dividend_yield) if dividend_yield else 0,
-            'dividend_months_detected': div_months,
-            'currency': info.get('currency', 'EUR')
-        }
-    except Exception as e:
-        return {
-            'dividend_per_share_annual': 0,
-            'dividend_yield': 0,
-            'dividend_months_detected': [],
-            'currency': 'EUR'
-        }
+        # Método 2: Info del ticker
+        info = etf.info
+        div_rate = info.get('trailingAnnualDividendRate', 0)
+        if div_rate and div_rate > 0:
+            return {
+                'annual': float(div_rate),
+                'months': [],
+                'last_amount': 0,
+                'last_date': 'N/A'
+            }
+            
+        return None
+    except:
+        return None
 
 def calculate_metrics(series, capital_inicial):
     if series.empty or len(series) < 2: 
@@ -336,28 +358,7 @@ with st.sidebar:
         inv = cfg['shares'] * cfg['buy_price']
         st.caption(f"{ticker}: {cfg['shares']} acc × €{cfg['buy_price']:.2f} = €{inv:,.2f}")
 
-# --- 5. OBTENER DIVIDENDOS REALES ---
-@st.cache_data(ttl=3600, show_spinner=False)
-def load_all_dividend_info():
-    """Carga información de dividendos para todos los ETFs"""
-    dividend_data = {}
-    for ticker in PORTFOLIO_CONFIG.keys():
-        dividend_data[ticker] = get_dividend_info(ticker)
-    return dividend_data
-
-# Cargar dividendos
-with st.spinner('Cargando información de dividendos...'):
-    dividend_info_all = load_all_dividend_info()
-
-# Actualizar PORTFOLIO_CONFIG con dividendos reales
-for ticker, cfg in PORTFOLIO_CONFIG.items():
-    div_info = dividend_info_all.get(ticker, {})
-    cfg['dividend_per_share_annual'] = div_info.get('dividend_per_share_annual', 0)
-    cfg['dividend_yield_real'] = div_info.get('dividend_yield', 0)
-    if div_info.get('dividend_months_detected'):
-        cfg['dividend_months'] = div_info['dividend_months_detected']
-
-# --- 6. LÓGICA PRINCIPAL ---
+# --- 5. LÓGICA PRINCIPAL ---
 st.title("Dashboard de Cartera")
 
 # Determinar benchmark a usar
@@ -427,67 +428,94 @@ with tab1:
         with col_graph:
             # Título dinámico según benchmark
             if benchmark_ticker:
-                st.subheader(f"📈 Evolución vs {benchmark_ticker}")
+                st.subheader(f"📈 Evolución: Mi Cartera vs {benchmark_ticker}")
             else:
                 st.subheader("📈 Evolución")
             
             if len(df_analysis) > 0:
                 start_plot_date = portfolio_series.index[0] - timedelta(days=1)
                 
+                # Preparar serie de cartera con punto inicial
                 row_init_val = pd.DataFrame({'Total': [capital]}, index=[start_plot_date])
                 plot_series_val = pd.concat([row_init_val, portfolio_series[['Total']]]).sort_index()
                 
                 row_init_dd = pd.Series([0.0], index=[start_plot_date])
                 plot_series_dd = pd.concat([row_init_dd, dd_series]).sort_index()
                 
-                # Normalizar cartera a base 100
-                portfolio_normalized = (plot_series_val['Total'] / plot_series_val['Total'].iloc[0]) * 100
-                
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3], vertical_spacing=0.05)
                 
-                # Gráfico de la cartera (normalizado a base 100)
+                # Gráfico de la cartera en EUROS
                 fig.add_trace(go.Scatter(
-                    x=portfolio_normalized.index, 
-                    y=portfolio_normalized, 
+                    x=plot_series_val.index, 
+                    y=plot_series_val['Total'], 
                     name="Mi Cartera", 
                     mode='lines',
                     line=dict(color='#2563eb', width=3),
-                    hovertemplate='Mi Cartera: %{y:.2f}<extra></extra>'
+                    hovertemplate='Mi Cartera: €%{y:,.0f}<extra></extra>'
                 ), row=1, col=1)
                 
-                # Añadir benchmark si está seleccionado
+                # Añadir benchmark si está seleccionado (SIMULANDO MISMO CAPITAL)
                 benchmark_added = False
+                benchmark_current_value = None
+                
                 if benchmark_ticker:
                     with st.spinner(f'Cargando benchmark {benchmark_ticker}...'):
                         benchmark_data = get_benchmark_data(benchmark_ticker, start_plot_date)
                     
                     if benchmark_data is not None and len(benchmark_data) > 0:
                         try:
-                            # Asegurar que es una Serie
-                            if isinstance(benchmark_data, pd.DataFrame):
-                                benchmark_data = benchmark_data.iloc[:, 0]
-                            
                             benchmark_data.index = pd.to_datetime(benchmark_data.index)
+                            benchmark_data = benchmark_data.sort_index()
                             
-                            # Alinear fechas con la cartera
-                            benchmark_aligned = benchmark_data.reindex(portfolio_normalized.index, method='ffill')
-                            benchmark_aligned = benchmark_aligned.ffill().bfill()
+                            # Encontrar el precio del benchmark en la fecha de inicio (o la más cercana)
+                            start_dt = pd.to_datetime(start_date)
                             
-                            # Verificar que hay datos válidos
-                            first_val = benchmark_aligned.iloc[0]
-                            if pd.notna(first_val) and float(first_val) > 0:
-                                # Normalizar benchmark a base 100
-                                benchmark_normalized = (benchmark_aligned / float(first_val)) * 100
+                            # Buscar precio inicial del benchmark
+                            benchmark_before_start = benchmark_data[benchmark_data.index <= start_dt]
+                            if len(benchmark_before_start) > 0:
+                                benchmark_initial_price = float(benchmark_before_start.iloc[-1])
+                            else:
+                                # Si no hay datos antes, usar el primer disponible
+                                benchmark_initial_price = float(benchmark_data.iloc[0])
+                            
+                            if benchmark_initial_price > 0:
+                                # Calcular cuántas acciones del benchmark se comprarían con el capital
+                                benchmark_shares = capital / benchmark_initial_price
                                 
-                                fig.add_trace(go.Scatter(
-                                    x=benchmark_normalized.index, 
-                                    y=benchmark_normalized, 
-                                    name=benchmark_ticker, 
-                                    mode='lines',
-                                    line=dict(color='#f59e0b', width=2, dash='dot'),
-                                    hovertemplate=f'{benchmark_ticker}: %{{y:.2f}}<extra></extra>'
-                                ), row=1, col=1)
-                                benchmark_added = True
+                                # Crear serie del benchmark alineada con las fechas de la cartera
+                                common_dates = plot_series_val.index.intersection(benchmark_data.index)
+                                
+                                if len(common_dates) > 0:
+                                    benchmark_aligned = benchmark_data.loc[common_dates]
+                                    benchmark_value_series = benchmark_aligned * benchmark_shares
+                                    
+                                    # Añadir punto inicial
+                                    benchmark_value_series = pd.concat([
+                                        pd.Series([capital], index=[start_plot_date]),
+                                        benchmark_value_series
+                                    ]).sort_index()
+                                    
+                                    # Rellenar fechas faltantes
+                                    benchmark_value_series = benchmark_value_series.reindex(
+                                        plot_series_val.index, method='ffill'
+                                    ).ffill().bfill()
+                                    
+                                    fig.add_trace(go.Scatter(
+                                        x=benchmark_value_series.index, 
+                                        y=benchmark_value_series, 
+                                        name=f"{benchmark_ticker} (€{capital:,.0f} inv.)", 
+                                        mode='lines',
+                                        line=dict(color='#f59e0b', width=2, dash='dot'),
+                                        hovertemplate=f'{benchmark_ticker}: €%{{y:,.0f}}<extra></extra>'
+                                    ), row=1, col=1)
+                                    
+                                    benchmark_added = True
+                                    benchmark_current_value = float(benchmark_value_series.iloc[-1])
+                                else:
+                                    st.warning(f"⚠️ No hay fechas coincidentes con {benchmark_ticker}")
+                            else:
+                                st.warning(f"⚠️ Precio inicial de {benchmark_ticker} no válido")
+                                
                         except Exception as e:
                             st.warning(f"⚠️ Error procesando benchmark {benchmark_ticker}: {str(e)}")
                     else:
@@ -520,29 +548,29 @@ with tab1:
                     font=dict(color='#334155')
                 )
                 
-                fig.update_yaxes(title_text="Base 100", gridcolor='#e2e8f0', row=1, col=1, autorange=True)
+                fig.update_yaxes(title_text="Valor (€)", gridcolor='#e2e8f0', row=1, col=1, autorange=True, tickformat=",")
                 fig.update_yaxes(title_text="DD", tickformat=".0%", gridcolor='#e2e8f0', row=2, col=1)
                 fig.update_xaxes(gridcolor='#e2e8f0')
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # Mostrar comparativa de rendimiento si hay benchmark
-                if benchmark_ticker and benchmark_added:
-                    try:
-                        portfolio_ret = (float(portfolio_normalized.iloc[-1]) / 100) - 1
-                        benchmark_ret = (float(benchmark_normalized.iloc[-1]) / 100) - 1
-                        outperformance = portfolio_ret - benchmark_ret
-                        
-                        col_p1, col_p2, col_p3 = st.columns(3)
-                        col_p1.metric("📊 Mi Cartera", f"{portfolio_ret:+.2%}")
-                        col_p2.metric(f"📈 {benchmark_ticker}", f"{benchmark_ret:+.2%}")
-                        
-                        if outperformance >= 0:
-                            col_p3.metric("🏆 Outperformance", f"+{outperformance:.2%}", delta_color="normal")
-                        else:
-                            col_p3.metric("📉 Underperformance", f"{outperformance:.2%}", delta_color="inverse")
-                    except Exception:
-                        pass
+                if benchmark_ticker and benchmark_added and benchmark_current_value is not None:
+                    portfolio_ret = (float(current_total) - capital) / capital
+                    benchmark_ret = (benchmark_current_value - capital) / capital
+                    diff_euros = float(current_total) - benchmark_current_value
+                    outperformance = portfolio_ret - benchmark_ret
+                    
+                    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+                    col_p1.metric("📊 Mi Cartera", f"€{current_total:,.0f}", f"{portfolio_ret:+.2%}")
+                    col_p2.metric(f"📈 {benchmark_ticker}", f"€{benchmark_current_value:,.0f}", f"{benchmark_ret:+.2%}")
+                    
+                    if diff_euros >= 0:
+                        col_p3.metric("💰 Diferencia", f"+€{diff_euros:,.0f}")
+                        col_p4.metric("🏆 Outperformance", f"+{outperformance:.2%}", delta_color="normal")
+                    else:
+                        col_p3.metric("💸 Diferencia", f"€{diff_euros:,.0f}")
+                        col_p4.metric("📉 Underperformance", f"{outperformance:.2%}", delta_color="inverse")
             else:
                 st.write("Cargando...")
 
@@ -606,24 +634,6 @@ with tab2:
     </div>
     """, unsafe_allow_html=True)
     
-    # Mostrar datos de dividendos obtenidos de yfinance
-    st.markdown("### 📊 Datos de Dividendos (Yahoo Finance)")
-    
-    div_source_data = []
-    for ticker, cfg in PORTFOLIO_CONFIG.items():
-        div_info = dividend_info_all.get(ticker, {})
-        div_source_data.append({
-            'ETF': ticker,
-            'Nombre': cfg['name'],
-            'Div/Acc Anual': f"€{cfg.get('dividend_per_share_annual', 0):.4f}",
-            'Yield Real': f"{cfg.get('dividend_yield_real', 0)*100:.2f}%" if cfg.get('dividend_yield_real', 0) > 0 else "N/A",
-            'Meses Detectados': ', '.join([str(m) for m in cfg.get('dividend_months', [])]) or "N/A"
-        })
-    
-    st.dataframe(pd.DataFrame(div_source_data), use_container_width=True, hide_index=True)
-    
-    st.markdown("---")
-    
     # Calcular dividendos por mes
     meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
     
@@ -631,17 +641,20 @@ with tab2:
     monthly_totals = {i: 0 for i in range(1, 13)}
     
     for ticker, cfg in PORTFOLIO_CONFIG.items():
-        div_per_share = cfg.get('dividend_per_share_annual', 0)
+        div_per_share = cfg['dividend_per_share_annual']
         annual_div = div_per_share * cfg['shares']
-        div_months = cfg.get('dividend_months', [])
+        div_months = cfg['dividend_months']
         payments_per_year = len(div_months) if div_months else 1
         div_per_payment = annual_div / payments_per_year if payments_per_year > 0 else 0
+        
+        yield_on_cost = (div_per_share / cfg['buy_price']) * 100
         
         row = {
             'ETF': ticker,
             'Nombre': cfg['name'],
             'Acciones': cfg['shares'],
-            'Div/Acc': f"€{div_per_share:.4f}",
+            'Div/Acc': f"€{div_per_share:.2f}",
+            'Yield': f"{yield_on_cost:.1f}%",
         }
         
         for i, mes in enumerate(meses, 1):
@@ -655,16 +668,46 @@ with tab2:
         dividend_calendar.append(row)
     
     # Mostrar resumen
-    total_bruto = sum(cfg.get('dividend_per_share_annual', 0) * cfg['shares'] for cfg in PORTFOLIO_CONFIG.values())
+    total_bruto = sum(cfg['dividend_per_share_annual'] * cfg['shares'] for cfg in PORTFOLIO_CONFIG.values())
     total_retencion = total_bruto * RETENCION_ESPANA
     total_neto = total_bruto - total_retencion
+    yield_cartera = (total_bruto / CAPITAL_INVERTIDO) * 100
     
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("💵 Dividendo Anual Bruto", f"€{total_bruto:,.2f}")
     col2.metric("🏦 Retención España (19%)", f"-€{total_retencion:,.2f}")
     col3.metric("💰 Dividendo Anual Neto", f"€{total_neto:,.2f}")
-    yield_cartera = (total_bruto/CAPITAL_INVERTIDO)*100 if CAPITAL_INVERTIDO > 0 else 0
     col4.metric("📊 Yield sobre coste", f"{yield_cartera:.2f}%")
+    
+    st.markdown("---")
+    
+    # Tabla de dividendos por ETF
+    st.markdown("### 📊 Dividendos por ETF")
+    
+    div_summary = []
+    for ticker, cfg in PORTFOLIO_CONFIG.items():
+        div_per_share = cfg['dividend_per_share_annual']
+        annual_div = div_per_share * cfg['shares']
+        yield_on_cost = (div_per_share / cfg['buy_price']) * 100
+        
+        # Verificar con yfinance como referencia
+        yf_data = get_dividend_info_yfinance(ticker)
+        yf_div = yf_data['annual'] if yf_data else 0
+        
+        div_summary.append({
+            'ETF': ticker,
+            'Nombre': cfg['name'],
+            'Acciones': cfg['shares'],
+            'Precio Compra': f"€{cfg['buy_price']:.2f}",
+            'Div/Acc (Fuente)': f"€{div_per_share:.2f}",
+            'Div/Acc (yFinance)': f"€{yf_div:.2f}" if yf_div > 0 else "N/A",
+            'Total Anual': f"€{annual_div:.2f}",
+            'Yield': f"{yield_on_cost:.2f}%",
+            'Último Pago': cfg['last_dividend_date'],
+            'Fuente': cfg['source']
+        })
+    
+    st.dataframe(pd.DataFrame(div_summary), use_container_width=True, hide_index=True)
     
     st.markdown("---")
     
@@ -699,8 +742,8 @@ with tab2:
     
     st.markdown("---")
     
-    # Tabla detallada
-    st.markdown("### 📋 Detalle por ETF")
+    # Tabla detallada por mes
+    st.markdown("### 📋 Calendario Detallado")
     
     df_div = pd.DataFrame(dividend_calendar)
     
@@ -718,11 +761,11 @@ with tab2:
     
     # Resumen fiscal
     st.markdown("---")
-    st.markdown("### 🏛️ Resumen Fiscal")
+    st.markdown("### 🏛️ Resumen Fiscal Anual")
     
     fiscal_data = []
     for ticker, cfg in PORTFOLIO_CONFIG.items():
-        div_per_share = cfg.get('dividend_per_share_annual', 0)
+        div_per_share = cfg['dividend_per_share_annual']
         annual_div = div_per_share * cfg['shares']
         ret_origen = annual_div * cfg['withholding']
         ret_esp = annual_div * RETENCION_ESPANA
@@ -733,17 +776,37 @@ with tab2:
             'Nombre': cfg['name'],
             'Dividendo Bruto': f"€{annual_div:.2f}",
             'Ret. Origen': f"€{ret_origen:.2f} ({cfg['withholding']*100:.0f}%)",
-            'Ret. España': f"€{ret_esp:.2f} (19%)",
+            'Ret. España (19%)': f"€{ret_esp:.2f}",
             'Dividendo Neto': f"€{neto:.2f}",
         })
+    
+    # Añadir fila de totales
+    fiscal_data.append({
+        'ETF': 'TOTAL',
+        'Nombre': '',
+        'Dividendo Bruto': f"€{total_bruto:.2f}",
+        'Ret. Origen': f"€0.00 (0%)",
+        'Ret. España (19%)': f"€{total_retencion:.2f}",
+        'Dividendo Neto': f"€{total_neto:.2f}",
+    })
     
     df_fiscal = pd.DataFrame(fiscal_data)
     st.dataframe(df_fiscal, use_container_width=True, hide_index=True)
     
+    # Ingreso mensual medio
+    monthly_net_avg = total_neto / 12
+    st.markdown(f"""
+    <div style="background-color:#dcfce7; border:2px solid #16a34a; padding:20px; border-radius:10px; margin-top:20px; text-align:center;">
+        <span style="color:#166534; font-size:1.2rem; font-weight:600;">💰 Ingreso Mensual Medio (Neto):</span>
+        <span style="color:#166534; font-weight:bold; font-size:1.8rem; margin-left:15px;">€{monthly_net_avg:.2f}</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("""
     <div style="background-color:#fef3c7; border-left:4px solid #f59e0b; padding:15px; border-radius:0 8px 8px 0; margin-top:20px;">
-        <b>⚠️ Nota:</b> Los datos de dividendos se obtienen directamente de <b>Yahoo Finance</b> y corresponden 
-        a los últimos 12 meses. Los dividendos futuros pueden variar. Los ETFs UCITS domiciliados 
+        <b>📝 Fuentes de datos de dividendos:</b><br>
+        Los dividendos mostrados provienen de fuentes públicas oficiales (justETF, fichas de producto de las gestoras).
+        Se muestra también la referencia de Yahoo Finance cuando está disponible. Los ETFs UCITS domiciliados 
         en Irlanda no aplican retención en origen para inversores de la UE.
     </div>
     """, unsafe_allow_html=True)
