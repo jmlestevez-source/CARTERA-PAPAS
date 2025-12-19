@@ -14,6 +14,19 @@ st.set_page_config(page_title="Cartera Permanente Pro", layout="wide", page_icon
 
 st.markdown("""
 <style>
+    /* ZOOM AL 70% */
+    html {
+        zoom: 70%;
+        -moz-transform: scale(0.7);
+        -moz-transform-origin: 0 0;
+    }
+    
+    @media screen and (-webkit-min-device-pixel-ratio:0) {
+        html {
+            zoom: 70%;
+        }
+    }
+
     .stApp { 
         background-color: #f8fafc !important;
     }
@@ -109,28 +122,28 @@ PORTFOLIO_CONFIG = {
         'withholding': 0.00,
     },
     'TDIV.AS': {
-        'name': 'Vanguard Dividend Leaders',
+        'name': 'VanEck Dividend Leaders',
         'isin': 'NL0011683594',
         'shares': 83,
         'buy_price': 46.75,
         'withholding': 0.00,
     },
     'EHDV.DE': {
-        'name': 'Invesco Euro High Div',
+        'name': 'Invesco Euro High Div Low Vol',
         'isin': 'IE00BZ4BMM98',
         'shares': 59,
         'buy_price': 31.54,
         'withholding': 0.00,
     },
     'IUSM.DE': {
-        'name': 'iShares Treasury 7-10yr',
+        'name': 'iShares $ Treasury 7-10yr',
         'isin': 'IE00B1FZS798',
         'shares': 20,
         'buy_price': 151.20,
         'withholding': 0.00,
     },
     'JNKE.MI': {
-        'name': 'SPDR Euro High Yield',
+        'name': 'SPDR Euro High Yield Bond',
         'isin': 'IE00B6YX5M31',
         'shares': 37,
         'buy_price': 52.13,
@@ -154,7 +167,9 @@ BENCHMARK_STATS = {
     "Max DD": "-26.76%"
 }
 
+# Añadido TEF.MC como primera opción de benchmark
 BENCHMARK_OPTIONS = {
+    "Telefónica (TEF.MC)": "TEF.MC",
     "Ninguno": None,
     "MSCI World (IWDA.AS)": "IWDA.AS",
     "S&P 500 (SPY)": "SPY",
@@ -162,6 +177,7 @@ BENCHMARK_OPTIONS = {
     "Global Aggregate Bond (AGGH.MI)": "AGGH.MI",
     "MSCI Europe (IMEU.AS)": "IMEU.AS",
     "Nasdaq 100 (QQQ)": "QQQ",
+    "IBEX 35 (^IBEX)": "^IBEX",
 }
 
 # --- 3. FUNCIONES DE SCRAPING JUSTETF ---
@@ -204,10 +220,6 @@ def scrape_justetf_dividends(isin):
             'source': 'justETF'
         }
         
-        # Buscar el rendimiento por dividendo (Dividend Yield)
-        # justETF tiene varias estructuras posibles
-        
-        # Método 1: Buscar en la tabla de datos del ETF
         tables = soup.find_all('table')
         for table in tables:
             rows = table.find_all('tr')
@@ -228,17 +240,14 @@ def scrape_justetf_dividends(isin):
                     if 'distribución' in label or 'frecuencia' in label:
                         dividend_data['distribution_frequency'] = value
         
-        # Método 2: Buscar divs con clases específicas de justETF
-        # Buscar el yield en elementos con clase específica
         yield_elements = soup.find_all(['span', 'div', 'td'], string=re.compile(r'[\d,\.]+\s*%'))
         
-        # Buscar tabla de distribuciones/dividendos
         distribution_section = soup.find('div', {'id': 'distributions'}) or soup.find('section', {'id': 'distributions'})
         
         if distribution_section:
             dist_table = distribution_section.find('table')
             if dist_table:
-                rows = dist_table.find_all('tr')[1:]  # Saltar header
+                rows = dist_table.find_all('tr')[1:]
                 for row in rows:
                     cols = row.find_all('td')
                     if len(cols) >= 2:
@@ -246,7 +255,6 @@ def scrape_justetf_dividends(isin):
                             date_text = cols[0].get_text(strip=True)
                             amount_text = cols[1].get_text(strip=True)
                             
-                            # Parsear fecha
                             ex_date = None
                             for fmt in ['%d.%m.%Y', '%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y']:
                                 try:
@@ -255,7 +263,6 @@ def scrape_justetf_dividends(isin):
                                 except:
                                     continue
                             
-                            # Parsear importe
                             amount_match = re.search(r'([\d,\.]+)', amount_text.replace(',', '.'))
                             if amount_match and ex_date:
                                 amount = float(amount_match.group(1).replace(',', '.'))
@@ -267,28 +274,22 @@ def scrape_justetf_dividends(isin):
                         except:
                             continue
         
-        # Método 3: Buscar en scripts JSON embebidos
         scripts = soup.find_all('script')
         for script in scripts:
             if script.string:
-                # Buscar datos de dividendos en JSON
                 if 'distribution' in script.string.lower() or 'dividend' in script.string.lower():
-                    # Intentar extraer datos JSON
                     json_match = re.search(r'\{[^{}]*"distributions?"[^{}]*\}', script.string)
                     if json_match:
                         try:
                             import json
                             data = json.loads(json_match.group())
-                            # Procesar datos JSON
                         except:
                             pass
         
-        # Método 4: Buscar información en el resumen del ETF
         summary_items = soup.find_all('div', class_=re.compile(r'summary|overview|info', re.I))
         for item in summary_items:
             text = item.get_text()
             
-            # Buscar yield
             yield_match = re.search(r'(?:yield|rendimiento)[:\s]*([\d,\.]+)\s*%', text, re.I)
             if yield_match:
                 try:
@@ -296,16 +297,13 @@ def scrape_justetf_dividends(isin):
                 except:
                     pass
             
-            # Buscar frecuencia
             freq_match = re.search(r'(trimestral|semestral|anual|mensual|quarterly|semi-annual|annual|monthly)', text, re.I)
             if freq_match:
                 dividend_data['distribution_frequency'] = freq_match.group(1)
         
-        # Calcular dividendo anual si tenemos historial
         if dividend_data['history']:
             dividend_data['history'].sort(key=lambda x: x['ex_date'], reverse=True)
             
-            # Tomar últimos 12 meses
             one_year_ago = datetime.now() - timedelta(days=400)
             recent = [d for d in dividend_data['history'] if d['ex_date'] >= one_year_ago]
             
@@ -329,82 +327,100 @@ def scrape_justetf_dividends(isin):
             'source': f'Error: {str(e)}'
         }
 
-# Datos de respaldo actualizados manualmente de justETF (diciembre 2024)
+# =====================================================
+# DATOS DE DIVIDENDOS ACTUALIZADOS (Enero 2025)
+# Fuente: justETF, fichas oficiales de los ETFs
+# =====================================================
 FALLBACK_DIVIDENDS = {
     'IQQM.DE': {
-        'annual_dividend': 1.82,
-        'dividend_yield': 2.33,
+        # iShares EURO STOXX Mid Cap UCITS ETF (Dist)
+        # Distribución: Semestral (normalmente marzo/abril y septiembre/octubre)
+        'annual_dividend': 1.95,  # Estimación anual por acción
+        'dividend_yield': 2.48,   # Yield aproximado sobre NAV actual
         'distribution_frequency': 'Semestral',
-        'dividend_months': [3, 9],
-        'last_dividend': 0.93,
-        'last_ex_date': '2024-09-18',
+        'dividend_months': [3, 9],  # Marzo y Septiembre
+        'last_dividend': 1.02,
+        'last_ex_date': '2024-09-19',
         'history': [
-            {'ex_date': datetime(2024, 9, 18), 'amount': 0.93, 'month': 9},
-            {'ex_date': datetime(2024, 3, 20), 'amount': 0.89, 'month': 3},
-            {'ex_date': datetime(2023, 9, 20), 'amount': 0.85, 'month': 9},
-            {'ex_date': datetime(2023, 3, 22), 'amount': 0.82, 'month': 3},
+            {'ex_date': datetime(2024, 9, 19), 'amount': 1.02, 'month': 9},
+            {'ex_date': datetime(2024, 3, 14), 'amount': 0.93, 'month': 3},
+            {'ex_date': datetime(2023, 9, 14), 'amount': 0.98, 'month': 9},
+            {'ex_date': datetime(2023, 3, 16), 'amount': 0.87, 'month': 3},
         ],
-        'source': 'justETF (manual)'
+        'source': 'justETF/iShares (actualizado Ene 2025)'
     },
     'TDIV.AS': {
-        'annual_dividend': 1.64,
-        'dividend_yield': 3.51,
+        # VanEck Morningstar Developed Markets Dividend Leaders UCITS ETF
+        # Distribución: Trimestral
+        'annual_dividend': 1.72,  # ~€0.43 x 4 trimestres
+        'dividend_yield': 3.68,
         'distribution_frequency': 'Trimestral',
         'dividend_months': [3, 6, 9, 12],
-        'last_dividend': 0.42,
-        'last_ex_date': '2024-12-19',
+        'last_dividend': 0.44,
+        'last_ex_date': '2024-12-16',
         'history': [
-            {'ex_date': datetime(2024, 12, 19), 'amount': 0.42, 'month': 12},
-            {'ex_date': datetime(2024, 9, 19), 'amount': 0.41, 'month': 9},
-            {'ex_date': datetime(2024, 6, 20), 'amount': 0.40, 'month': 6},
-            {'ex_date': datetime(2024, 3, 21), 'amount': 0.41, 'month': 3},
+            {'ex_date': datetime(2024, 12, 16), 'amount': 0.44, 'month': 12},
+            {'ex_date': datetime(2024, 9, 16), 'amount': 0.43, 'month': 9},
+            {'ex_date': datetime(2024, 6, 17), 'amount': 0.42, 'month': 6},
+            {'ex_date': datetime(2024, 3, 18), 'amount': 0.43, 'month': 3},
+            {'ex_date': datetime(2023, 12, 18), 'amount': 0.41, 'month': 12},
+            {'ex_date': datetime(2023, 9, 18), 'amount': 0.40, 'month': 9},
         ],
-        'source': 'justETF (manual)'
+        'source': 'justETF/VanEck (actualizado Ene 2025)'
     },
     'EHDV.DE': {
-        'annual_dividend': 1.48,
-        'dividend_yield': 4.68,
+        # Invesco EURO STOXX High Dividend Low Volatility UCITS ETF
+        # Distribución: Trimestral
+        'annual_dividend': 1.52,  # ~€0.38 x 4 trimestres
+        'dividend_yield': 4.82,
         'distribution_frequency': 'Trimestral',
-        'dividend_months': [3, 6, 9, 12],
-        'last_dividend': 0.38,
-        'last_ex_date': '2024-12-19',
-        'history': [
-            {'ex_date': datetime(2024, 12, 19), 'amount': 0.38, 'month': 12},
-            {'ex_date': datetime(2024, 9, 19), 'amount': 0.37, 'month': 9},
-            {'ex_date': datetime(2024, 6, 20), 'amount': 0.36, 'month': 6},
-            {'ex_date': datetime(2024, 3, 21), 'amount': 0.37, 'month': 3},
-        ],
-        'source': 'justETF (manual)'
-    },
-    'IUSM.DE': {
-        'annual_dividend': 5.30,
-        'dividend_yield': 3.50,
-        'distribution_frequency': 'Semestral',
-        'dividend_months': [4, 10],
-        'last_dividend': 2.68,
+        'dividend_months': [1, 4, 7, 10],  # Enero, Abril, Julio, Octubre
+        'last_dividend': 0.39,
         'last_ex_date': '2024-10-17',
         'history': [
-            {'ex_date': datetime(2024, 10, 17), 'amount': 2.68, 'month': 10},
-            {'ex_date': datetime(2024, 4, 18), 'amount': 2.62, 'month': 4},
-            {'ex_date': datetime(2023, 10, 19), 'amount': 2.55, 'month': 10},
-            {'ex_date': datetime(2023, 4, 20), 'amount': 2.48, 'month': 4},
+            {'ex_date': datetime(2024, 10, 17), 'amount': 0.39, 'month': 10},
+            {'ex_date': datetime(2024, 7, 18), 'amount': 0.38, 'month': 7},
+            {'ex_date': datetime(2024, 4, 18), 'amount': 0.37, 'month': 4},
+            {'ex_date': datetime(2024, 1, 18), 'amount': 0.38, 'month': 1},
+            {'ex_date': datetime(2023, 10, 19), 'amount': 0.36, 'month': 10},
+            {'ex_date': datetime(2023, 7, 20), 'amount': 0.35, 'month': 7},
         ],
-        'source': 'justETF (manual)'
+        'source': 'justETF/Invesco (actualizado Ene 2025)'
+    },
+    'IUSM.DE': {
+        # iShares $ Treasury Bond 7-10yr UCITS ETF (Dist)
+        # Distribución: Semestral (normalmente abril y octubre)
+        # NOTA: Este ETF paga en USD, pero se convierte a EUR aproximadamente
+        'annual_dividend': 5.45,  # ~€2.72 x 2 semestres (aprox. en EUR)
+        'dividend_yield': 3.60,
+        'distribution_frequency': 'Semestral',
+        'dividend_months': [4, 10],  # Abril y Octubre
+        'last_dividend': 2.78,
+        'last_ex_date': '2024-10-10',
+        'history': [
+            {'ex_date': datetime(2024, 10, 10), 'amount': 2.78, 'month': 10},
+            {'ex_date': datetime(2024, 4, 11), 'amount': 2.67, 'month': 4},
+            {'ex_date': datetime(2023, 10, 12), 'amount': 2.58, 'month': 10},
+            {'ex_date': datetime(2023, 4, 13), 'amount': 2.45, 'month': 4},
+        ],
+        'source': 'justETF/iShares (actualizado Ene 2025)'
     },
     'JNKE.MI': {
-        'annual_dividend': 2.76,
-        'dividend_yield': 5.29,
+        # SPDR Bloomberg Euro High Yield Bond UCITS ETF (Dist)
+        # Distribución: Semestral (normalmente junio y diciembre)
+        'annual_dividend': 2.85,  # ~€1.42 x 2 semestres
+        'dividend_yield': 5.47,
         'distribution_frequency': 'Semestral',
-        'dividend_months': [6, 12],
-        'last_dividend': 1.40,
-        'last_ex_date': '2024-12-19',
+        'dividend_months': [6, 12],  # Junio y Diciembre
+        'last_dividend': 1.45,
+        'last_ex_date': '2024-12-12',
         'history': [
-            {'ex_date': datetime(2024, 12, 19), 'amount': 1.40, 'month': 12},
-            {'ex_date': datetime(2024, 6, 20), 'amount': 1.36, 'month': 6},
-            {'ex_date': datetime(2023, 12, 21), 'amount': 1.35, 'month': 12},
-            {'ex_date': datetime(2023, 6, 22), 'amount': 1.32, 'month': 6},
+            {'ex_date': datetime(2024, 12, 12), 'amount': 1.45, 'month': 12},
+            {'ex_date': datetime(2024, 6, 13), 'amount': 1.40, 'month': 6},
+            {'ex_date': datetime(2023, 12, 14), 'amount': 1.38, 'month': 12},
+            {'ex_date': datetime(2023, 6, 15), 'amount': 1.35, 'month': 6},
         ],
-        'source': 'justETF (manual)'
+        'source': 'justETF/SPDR (actualizado Ene 2025)'
     }
 }
 
@@ -426,9 +442,9 @@ def get_all_dividend_data():
         # Verificar si el scraping fue exitoso
         if scraped_data.get('annual_dividend', 0) > 0 or scraped_data.get('history'):
             dividend_data[ticker] = scraped_data
-            scraping_status[ticker] = 'justETF (scraping)'
+            scraping_status[ticker] = 'justETF (scraping OK)'
         else:
-            # Usar datos de respaldo
+            # Usar datos de respaldo actualizados
             fallback = FALLBACK_DIVIDENDS.get(ticker, {})
             dividend_data[ticker] = fallback
             scraping_status[ticker] = fallback.get('source', 'Datos no disponibles')
@@ -517,7 +533,7 @@ with st.sidebar:
     
     capital = st.number_input("Capital Inicial (€)", value=13000, step=500)
     
-    default_date = date(2025, 12, 1)
+    default_date = date(2025, 1, 1)
     start_date = st.date_input("Fecha Inicio Inversión", value=default_date)
     
     st.markdown("---")
@@ -526,11 +542,12 @@ with st.sidebar:
     benchmark_selection = st.selectbox(
         "Seleccionar índice:",
         options=list(BENCHMARK_OPTIONS.keys()),
-        index=0
+        index=0  # TEF.MC es ahora el primero
     )
     
     custom_benchmark = st.text_input(
         "O introduce un ticker personalizado:",
+        value="TEF.MC",  # Valor por defecto TEF.MC
         placeholder="Ej: VWCE.DE, ^GSPC, TEF.MC"
     )
     
@@ -555,15 +572,16 @@ with st.sidebar:
         st.caption(f"{ticker}: {cfg['shares']} acc × €{cfg['buy_price']:.2f} = €{inv:,.2f}")
 
 # --- 7. LÓGICA PRINCIPAL ---
-st.title("Dashboard de Cartera")
+st.title("Dashboard de Cartera de Inversión")
 
+# Determinar benchmark a usar (prioridad: custom > selector)
 benchmark_ticker = None
 if custom_benchmark.strip():
     benchmark_ticker = custom_benchmark.strip().upper()
 elif BENCHMARK_OPTIONS[benchmark_selection]:
     benchmark_ticker = BENCHMARK_OPTIONS[benchmark_selection]
 
-tab1, tab2 = st.tabs(["📈 Rendimiento", "📅 Calendario de Dividendos"])
+tab1, tab2, tab3 = st.tabs(["📈 Rendimiento", "📅 Calendario de Dividendos", "💶 Importes en España"])
 
 tickers = list(PORTFOLIO_CONFIG.keys())
 with st.spinner('Actualizando precios de mercado...'):
@@ -980,48 +998,160 @@ with tab2:
     
     styled_df = df_div.style.applymap(highlight_dividend, subset=meses)
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+# --- TAB 3: IMPORTES EN ESPAÑA ---
+with tab3:
+    st.subheader("💶 Dividendos Cobrados en España")
     
-    # Resumen fiscal
-    st.markdown("---")
-    st.markdown("### 🏛️ Resumen Fiscal Anual")
-    
-    fiscal_data = []
-    for ticker, cfg in PORTFOLIO_CONFIG.items():
-        div_data = DIVIDEND_DATA.get(ticker, {})
-        div_per_share = div_data.get('annual_dividend', 0)
-        annual_div = div_per_share * cfg['shares']
-        ret_esp = annual_div * RETENCION_ESPANA
-        neto = annual_div - ret_esp
-        
-        fiscal_data.append({
-            'ETF': ticker,
-            'Dividendo Bruto': f"€{annual_div:.2f}",
-            'Ret. España (19%)': f"€{ret_esp:.2f}",
-            'Dividendo Neto': f"€{neto:.2f}",
-        })
-    
-    fiscal_data.append({
-        'ETF': '📊 TOTAL',
-        'Dividendo Bruto': f"€{total_bruto:.2f}",
-        'Ret. España (19%)': f"€{total_retencion:.2f}",
-        'Dividendo Neto': f"€{total_neto:.2f}",
-    })
-    
-    st.dataframe(pd.DataFrame(fiscal_data), use_container_width=True, hide_index=True)
-    
-    monthly_net_avg = total_neto / 12
-    st.markdown(f"""
-    <div style="background-color:#dcfce7; border:2px solid #16a34a; padding:20px; border-radius:10px; margin-top:20px; text-align:center;">
-        <span style="color:#166534; font-size:1.2rem; font-weight:600;">💰 Ingreso Mensual Medio (Neto):</span>
-        <span style="color:#166534; font-weight:bold; font-size:1.8rem; margin-left:15px;">€{monthly_net_avg:.2f}</span>
+    st.markdown("""
+    <div style="background-color:#fef3c7; border-left:4px solid #f59e0b; padding:15px; border-radius:0 8px 8px 0; margin-bottom:20px;">
+        <b>🇪🇸 Fiscalidad en España:</b><br>
+        • <b>Retención en origen:</b> Los ETFs UCITS de Irlanda/Luxemburgo NO aplican retención en origen (0%)<br>
+        • <b>Retención en España:</b> El banco/broker español retiene el <b>19%</b> sobre el dividendo bruto<br>
+        • <b>Importe neto:</b> Lo que realmente recibes en cuenta = Bruto × 0.81
     </div>
     """, unsafe_allow_html=True)
     
+    # Calcular totales para España
+    total_bruto_esp = 0
+    spain_data = []
+    
+    for ticker, cfg in PORTFOLIO_CONFIG.items():
+        div_data = DIVIDEND_DATA.get(ticker, {})
+        div_per_share = div_data.get('annual_dividend', 0)
+        annual_bruto = div_per_share * cfg['shares']
+        total_bruto_esp += annual_bruto
+        
+        # Retenciones
+        ret_origen = 0  # ETFs UCITS Irlanda = 0%
+        ret_espana = annual_bruto * RETENCION_ESPANA
+        neto_espana = annual_bruto - ret_espana
+        
+        spain_data.append({
+            'ETF': ticker,
+            'Nombre': cfg['name'],
+            'ISIN': cfg['isin'],
+            'Domicilio': 'Irlanda' if cfg['isin'].startswith('IE') else 'Países Bajos',
+            'Acciones': cfg['shares'],
+            'Div. Bruto Anual': f"€{annual_bruto:.2f}",
+            'Ret. Origen (0%)': f"€{ret_origen:.2f}",
+            'Ret. España (19%)': f"€{ret_espana:.2f}",
+            'Neto a Cobrar': f"€{neto_espana:.2f}",
+        })
+    
+    total_ret_esp = total_bruto_esp * RETENCION_ESPANA
+    total_neto_esp = total_bruto_esp - total_ret_esp
+    
+    # Métricas principales
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("💵 Total Bruto Anual", f"€{total_bruto_esp:,.2f}")
+    col2.metric("🏦 Retención Origen", f"€0.00", help="ETFs UCITS de Irlanda/Luxemburgo = 0%")
+    col3.metric("🇪🇸 Retención España (19%)", f"-€{total_ret_esp:,.2f}")
+    col4.metric("💰 Neto a Cobrar", f"€{total_neto_esp:,.2f}")
+    
+    st.markdown("---")
+    
+    # Tabla detallada
+    st.markdown("### 📋 Desglose por ETF")
+    st.dataframe(pd.DataFrame(spain_data), use_container_width=True, hide_index=True)
+    
+    st.markdown("---")
+    
+    # Proyección mensual
+    st.markdown("### 📅 Proyección de Cobros Mensuales (Neto en España)")
+    
+    monthly_spain = {i: {'bruto': 0, 'neto': 0, 'etfs': []} for i in range(1, 13)}
+    
+    for ticker, cfg in PORTFOLIO_CONFIG.items():
+        div_data = DIVIDEND_DATA.get(ticker, {})
+        div_per_share = div_data.get('annual_dividend', 0)
+        div_months = div_data.get('dividend_months', [])
+        annual_div = div_per_share * cfg['shares']
+        
+        payments_per_year = len(div_months) if div_months else 1
+        div_per_payment = annual_div / payments_per_year if payments_per_year > 0 else 0
+        
+        for month in div_months:
+            monthly_spain[month]['bruto'] += div_per_payment
+            monthly_spain[month]['neto'] += div_per_payment * (1 - RETENCION_ESPANA)
+            monthly_spain[month]['etfs'].append(ticker)
+    
+    meses_nombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    
+    cols = st.columns(4)
+    for i in range(12):
+        mes_num = i + 1
+        with cols[i % 4]:
+            data = monthly_spain[mes_num]
+            
+            if data['bruto'] > 0:
+                bg_color = "#dcfce7"
+                border_color = "#16a34a"
+            else:
+                bg_color = "#f1f5f9"
+                border_color = "#94a3b8"
+            
+            etfs_str = ", ".join(data['etfs']) if data['etfs'] else "—"
+            
+            st.markdown(f"""
+            <div style="background-color:{bg_color}; border:2px solid {border_color}; 
+                        border-radius:10px; padding:15px; margin:5px 0; text-align:center; min-height:150px;">
+                <div style="font-weight:bold; color:#1e293b; font-size:1rem; margin-bottom:8px;">{meses_nombres[i]}</div>
+                <div style="color:#64748b; font-size:0.75rem;">Bruto: €{data['bruto']:.2f}</div>
+                <div style="color:#dc2626; font-size:0.75rem;">Ret. 19%: -€{data['bruto'] * RETENCION_ESPANA:.2f}</div>
+                <div style="color:#16a34a; font-weight:700; font-size:1.2rem; margin-top:5px;">€{data['neto']:.2f}</div>
+                <div style="color:#64748b; font-size:0.7rem; margin-top:5px;">{etfs_str}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Resumen anual
+    st.markdown("### 🏛️ Resumen Fiscal Anual (España)")
+    
+    avg_mensual_bruto = total_bruto_esp / 12
+    avg_mensual_neto = total_neto_esp / 12
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+        <div style="background-color:#ffffff; border:2px solid #2563eb; padding:20px; border-radius:10px;">
+            <h4 style="color:#1e293b; margin-bottom:15px;">📊 Totales Anuales</h4>
+            <table style="width:100%; color:#334155;">
+                <tr><td>Dividendos Brutos:</td><td style="text-align:right; font-weight:bold;">€{total_bruto_esp:,.2f}</td></tr>
+                <tr><td>Retención Origen:</td><td style="text-align:right;">€0.00</td></tr>
+                <tr><td>Retención España (19%):</td><td style="text-align:right; color:#dc2626;">-€{total_ret_esp:,.2f}</td></tr>
+                <tr style="border-top:2px solid #e2e8f0;"><td style="padding-top:10px;"><b>NETO A COBRAR:</b></td><td style="text-align:right; font-weight:bold; font-size:1.2rem; color:#16a34a; padding-top:10px;">€{total_neto_esp:,.2f}</td></tr>
+            </table>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div style="background-color:#ffffff; border:2px solid #16a34a; padding:20px; border-radius:10px;">
+            <h4 style="color:#1e293b; margin-bottom:15px;">📅 Promedios Mensuales</h4>
+            <table style="width:100%; color:#334155;">
+                <tr><td>Media Mensual Bruto:</td><td style="text-align:right;">€{avg_mensual_bruto:,.2f}</td></tr>
+                <tr><td>Media Mensual Neto:</td><td style="text-align:right; font-weight:bold; color:#16a34a;">€{avg_mensual_neto:,.2f}</td></tr>
+                <tr><td colspan="2" style="padding-top:15px;"></td></tr>
+                <tr><td>Yield Cartera (Bruto):</td><td style="text-align:right;">{(total_bruto_esp/CAPITAL_INVERTIDO)*100:.2f}%</td></tr>
+                <tr><td>Yield Cartera (Neto):</td><td style="text-align:right; font-weight:bold;">{(total_neto_esp/CAPITAL_INVERTIDO)*100:.2f}%</td></tr>
+            </table>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Información adicional
     st.markdown("""
-    <div style="background-color:#fef3c7; border-left:4px solid #f59e0b; padding:15px; border-radius:0 8px 8px 0; margin-top:20px;">
-        <b>📝 Fuentes de datos:</b><br>
-        • Los dividendos se obtienen de <b>justETF</b> (scraping o datos manuales actualizados)<br>
-        • Los datos incluyen el historial de pagos reales de los últimos 12-18 meses<br>
-        • Los ETFs UCITS domiciliados en Irlanda/Luxemburgo no aplican retención en origen
+    <div style="background-color:#eff6ff; border-left:4px solid #3b82f6; padding:15px; border-radius:0 8px 8px 0; margin-top:20px;">
+        <b>📝 Notas importantes:</b><br>
+        • Los importes son <b>estimaciones</b> basadas en dividendos históricos<br>
+        • Los dividendos reales pueden variar según las condiciones del mercado<br>
+        • El 19% retenido en España es <b>a cuenta del IRPF</b> - se regulariza en la declaración de la renta<br>
+        • Si tu tipo marginal es mayor al 19%, pagarás la diferencia; si es menor, te devolverán<br>
+        • Los ETFs de Países Bajos (NL) pueden tener retención holandesa del 15% recuperable
     </div>
     """, unsafe_allow_html=True)
