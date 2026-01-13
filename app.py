@@ -8,6 +8,7 @@ from datetime import datetime, date, timedelta
 import requests
 from bs4 import BeautifulSoup
 import re
+import time
 
 # --- 1. CONFIGURACIÓN VISUAL ---
 st.set_page_config(page_title="Cartera Permanente Pro", layout="wide", page_icon="🛡️")
@@ -44,7 +45,6 @@ st.markdown("""
         color: #f8fafc !important;
     }
 
-    /* Campos de entrada mejorados */
     div[data-baseweb="input"], div[data-baseweb="base-input"] {
         background-color: #1e293b !important; 
         border: 1px solid #475569 !important;
@@ -56,7 +56,6 @@ st.markdown("""
         font-size: 1rem !important;
     }
     
-    /* Select boxes */
     div[data-baseweb="select"] {
         background-color: #1e293b !important;
     }
@@ -71,14 +70,12 @@ st.markdown("""
         fill: white !important;
     }
     
-    /* Date input */
     div[data-testid="stDateInput"] > div > div {
         background-color: #1e293b !important;
         border: 1px solid #475569 !important;
         border-radius: 6px !important;
     }
     
-    /* Number input */
     div[data-testid="stNumberInput"] > div > div > input {
         background-color: #1e293b !important;
         color: #ffffff !important;
@@ -99,7 +96,6 @@ st.markdown("""
         background-color: #1d4ed8 !important;
     }
 
-    /* Métricas en el main */
     section[data-testid="stMain"] div[data-testid="stMetric"] {
         background-color: #ffffff !important;
         border: 1px solid #e2e8f0;
@@ -131,7 +127,6 @@ st.markdown("""
         border-radius: 8px;
     }
     
-    /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
     }
@@ -148,7 +143,6 @@ st.markdown("""
         color: white !important;
     }
     
-    /* Expander */
     .streamlit-expanderHeader {
         background-color: #f1f5f9;
         border-radius: 6px;
@@ -157,7 +151,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 2. CONFIGURACIÓN DE LA CARTERA ---
-# Fecha de compra de las acciones
 FECHA_COMPRA = date(2025, 12, 1)
 
 PORTFOLIO_CONFIG = {
@@ -198,7 +191,15 @@ PORTFOLIO_CONFIG = {
     }
 }
 
-# Calcular capital invertido y pesos
+# MAPEO DE TICKERS: tu ticker -> ticker en digrin.com
+DIGRIN_TICKER_MAP = {
+    'IQQM.DE': 'IQQM.DE',
+    'TDIV.AS': 'TDIV.AS',
+    'EHDV.DE': 'EHDV.DE',
+    'IUSM.DE': 'IUSM.DE',
+    'JNKE.MI': 'JNKE.L',  # En digrin está como .L (London)
+}
+
 CAPITAL_INVERTIDO = sum(cfg['shares'] * cfg['buy_price'] for cfg in PORTFOLIO_CONFIG.values())
 
 for ticker, cfg in PORTFOLIO_CONFIG.items():
@@ -228,18 +229,24 @@ BENCHMARK_OPTIONS = {
 
 # --- 3. FUNCIONES DE SCRAPING DIGRIN ---
 @st.cache_data(ttl=86400, show_spinner=False)
-def scrape_digrin_dividends(ticker):
+def scrape_digrin_dividends(ticker, digrin_ticker):
     """
     Obtiene el historial de dividendos desde digrin.com
     """
-    url = f"https://www.digrin.com/stocks/detail/{ticker}/"
+    url = f"https://www.digrin.com/stocks/detail/{digrin_ticker}/"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9,es;q=0.8',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
     }
     
     dividend_data = {
@@ -256,34 +263,53 @@ def scrape_digrin_dividends(ticker):
     
     try:
         session = requests.Session()
+        
+        # Primero hacer una petición a la página principal para obtener cookies
+        session.get("https://www.digrin.com/", headers=headers, timeout=10)
+        time.sleep(0.5)  # Pequeña pausa
+        
+        # Ahora obtener la página del ETF
         response = session.get(url, headers=headers, timeout=20)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'html.parser')
         
         # Buscar la tabla de dividendos
-        table = soup.find('table', class_='table table-striped table-bordered table-sm')
+        # Método 1: buscar por clase
+        table = soup.find('table', class_='table-striped')
         
+        # Método 2: buscar tabla que contenga "Ex-dividend date"
         if not table:
-            # Intentar buscar cualquier tabla con datos de dividendos
             tables = soup.find_all('table')
             for t in tables:
-                if t.find('th', string=re.compile('Ex-dividend', re.I)):
-                    table = t
-                    break
+                header_row = t.find('tr')
+                if header_row:
+                    header_text = header_row.get_text()
+                    if 'Ex-dividend' in header_text or 'Dividend amount' in header_text:
+                        table = t
+                        break
+        
+        # Método 3: buscar por estructura
+        if not table:
+            table = soup.find('table', {'class': re.compile(r'table.*bordered')})
         
         if not table:
-            dividend_data['source'] = 'digrin.com (tabla no encontrada)'
+            dividend_data['source'] = f'digrin.com - tabla no encontrada en {digrin_ticker}'
             return dividend_data
         
         tbody = table.find('tbody')
         if not tbody:
-            dividend_data['source'] = 'digrin.com (sin datos)'
+            # A veces la tabla no tiene tbody explícito
+            rows = table.find_all('tr')[1:]  # Saltar header
+        else:
+            rows = tbody.find_all('tr')
+        
+        if not rows:
+            dividend_data['source'] = f'digrin.com - sin filas en {digrin_ticker}'
             return dividend_data
         
-        rows = tbody.find_all('tr')
         today = datetime.now()
-        one_year_ago = today - timedelta(days=400)  # Un poco más de un año para margen
+        one_year_ago = today - timedelta(days=400)
         
         for row in rows:
             cells = row.find_all('td')
@@ -291,22 +317,43 @@ def scrape_digrin_dividends(ticker):
                 try:
                     # Ex-dividend date (formato: YYYY-MM-DD)
                     ex_date_text = cells[0].get_text(strip=True)
-                    ex_date = datetime.strptime(ex_date_text, '%Y-%m-%d')
+                    
+                    # Intentar parsear la fecha
+                    ex_date = None
+                    for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d.%m.%Y', '%m/%d/%Y']:
+                        try:
+                            ex_date = datetime.strptime(ex_date_text, fmt)
+                            break
+                        except:
+                            continue
+                    
+                    if not ex_date:
+                        continue
                     
                     # Payable date
                     pay_date_text = cells[1].get_text(strip=True)
-                    try:
-                        pay_date = datetime.strptime(pay_date_text, '%Y-%m-%d')
-                    except:
-                        pay_date = None
+                    pay_date = None
+                    for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d.%m.%Y', '%m/%d/%Y']:
+                        try:
+                            pay_date = datetime.strptime(pay_date_text, fmt)
+                            break
+                        except:
+                            continue
                     
-                    # Dividend amount - extraer solo el número y la moneda
-                    div_text = cells[2].get_text(strip=True)
+                    # Dividend amount - extraer número y moneda
+                    div_cell_text = cells[2].get_text(strip=True)
                     # Patrón: "0.2158 EUR (-63.71%)" o "0.2158 EUR"
-                    match = re.match(r'([\d.]+)\s*(\w+)', div_text)
+                    match = re.match(r'([\d.,]+)\s*([A-Z]{3})', div_cell_text)
                     
                     if match:
-                        amount = float(match.group(1))
+                        # Manejar formato europeo (coma como decimal)
+                        amount_str = match.group(1).replace(',', '.')
+                        # Si hay múltiples puntos, el último es el decimal
+                        if amount_str.count('.') > 1:
+                            parts = amount_str.rsplit('.', 1)
+                            amount_str = parts[0].replace('.', '') + '.' + parts[1]
+                        
+                        amount = float(amount_str)
                         currency = match.group(2)
                         
                         div_entry = {
@@ -319,7 +366,7 @@ def scrape_digrin_dividends(ticker):
                         
                         dividend_data['history'].append(div_entry)
                         
-                        # Si es un dividendo futuro, añadirlo a upcoming
+                        # Si es un dividendo futuro
                         if ex_date > today:
                             dividend_data['upcoming'].append(div_entry)
                             
@@ -335,7 +382,7 @@ def scrape_digrin_dividends(ticker):
             dividend_data['last_dividend'] = dividend_data['history'][0]['amount']
             dividend_data['last_ex_date'] = dividend_data['history'][0]['ex_date'].strftime('%Y-%m-%d')
             
-            # Calcular dividendo anual (últimos 12-14 meses para capturar ciclo completo)
+            # Calcular dividendo anual (últimos 12-14 meses)
             recent_dividends = [d for d in dividend_data['history'] 
                                if d['ex_date'] >= one_year_ago and d['ex_date'] <= today]
             
@@ -347,8 +394,8 @@ def scrape_digrin_dividends(ticker):
                 dividend_data['dividend_months'] = payment_months
                 
                 # Determinar frecuencia
-                num_payments = len(payment_months)
-                if num_payments >= 12:
+                num_payments = len(recent_dividends)
+                if num_payments >= 10:
                     dividend_data['distribution_frequency'] = 'Mensual'
                 elif num_payments >= 4:
                     dividend_data['distribution_frequency'] = 'Trimestral'
@@ -359,107 +406,111 @@ def scrape_digrin_dividends(ticker):
                 else:
                     dividend_data['distribution_frequency'] = 'Variable'
             
-            dividend_data['source'] = f'digrin.com ({len(dividend_data["history"])} registros)'
+            dividend_data['source'] = f'digrin.com ✓ ({len(dividend_data["history"])} registros)'
         else:
-            dividend_data['source'] = 'digrin.com (sin historial)'
+            dividend_data['source'] = f'digrin.com - sin historial parseado'
         
         return dividend_data
         
+    except requests.exceptions.HTTPError as e:
+        dividend_data['source'] = f'Error HTTP: {e.response.status_code}'
+        return dividend_data
     except requests.exceptions.RequestException as e:
-        dividend_data['source'] = f'Error conexión: {str(e)[:50]}'
+        dividend_data['source'] = f'Error conexión: {str(e)[:30]}'
         return dividend_data
     except Exception as e:
-        dividend_data['source'] = f'Error: {str(e)[:50]}'
+        dividend_data['source'] = f'Error: {str(e)[:30]}'
         return dividend_data
 
 
-# DATOS DE DIVIDENDOS DE RESPALDO (actualizados según digrin.com)
+# DATOS DE RESPALDO ACTUALIZADOS (de digrin.com - Enero 2025)
 FALLBACK_DIVIDENDS = {
     'IQQM.DE': {
-        'annual_dividend': 2.57,  # Suma de últimos 4 trimestres según digrin
-        'dividend_yield': 3.28,
+        'annual_dividend': 2.26,  # Suma 2024: 0.3523 + 0.5778 + 1.2545 + 0.0726
+        'dividend_yield': 2.89,
         'distribution_frequency': 'Trimestral',
         'dividend_months': [3, 6, 9, 12],
         'last_dividend': 0.2158,
         'last_ex_date': '2025-12-11',
         'history': [
-            {'ex_date': datetime(2025, 12, 11), 'amount': 0.2158, 'month': 12},
-            {'ex_date': datetime(2025, 9, 11), 'amount': 0.5946, 'month': 9},
-            {'ex_date': datetime(2025, 6, 12), 'amount': 1.6865, 'month': 6},
-            {'ex_date': datetime(2025, 3, 13), 'amount': 0.0748, 'month': 3},
-            {'ex_date': datetime(2024, 12, 12), 'amount': 0.3523, 'month': 12},
-            {'ex_date': datetime(2024, 9, 12), 'amount': 0.5778, 'month': 9},
-            {'ex_date': datetime(2024, 6, 13), 'amount': 1.2545, 'month': 6},
-            {'ex_date': datetime(2024, 3, 14), 'amount': 0.0726, 'month': 3},
+            {'ex_date': datetime(2025, 12, 11), 'amount': 0.2158, 'currency': 'EUR', 'month': 12},
+            {'ex_date': datetime(2025, 9, 11), 'amount': 0.5946, 'currency': 'EUR', 'month': 9},
+            {'ex_date': datetime(2025, 6, 12), 'amount': 1.6865, 'currency': 'EUR', 'month': 6},
+            {'ex_date': datetime(2025, 3, 13), 'amount': 0.0748, 'currency': 'EUR', 'month': 3},
+            {'ex_date': datetime(2024, 12, 12), 'amount': 0.3523, 'currency': 'EUR', 'month': 12},
+            {'ex_date': datetime(2024, 9, 12), 'amount': 0.5778, 'currency': 'EUR', 'month': 9},
+            {'ex_date': datetime(2024, 6, 13), 'amount': 1.2545, 'currency': 'EUR', 'month': 6},
+            {'ex_date': datetime(2024, 3, 14), 'amount': 0.0726, 'currency': 'EUR', 'month': 3},
         ],
         'upcoming': [],
         'source': 'Fallback digrin.com (Ene 2025)'
     },
     'TDIV.AS': {
-        'annual_dividend': 1.72,
-        'dividend_yield': 3.68,
+        'annual_dividend': 1.85,
+        'dividend_yield': 3.96,
         'distribution_frequency': 'Trimestral',
         'dividend_months': [3, 6, 9, 12],
-        'last_dividend': 0.44,
+        'last_dividend': 0.47,
         'last_ex_date': '2024-12-16',
         'history': [
-            {'ex_date': datetime(2024, 12, 16), 'amount': 0.44, 'month': 12},
-            {'ex_date': datetime(2024, 9, 16), 'amount': 0.43, 'month': 9},
-            {'ex_date': datetime(2024, 6, 17), 'amount': 0.42, 'month': 6},
-            {'ex_date': datetime(2024, 3, 18), 'amount': 0.43, 'month': 3},
+            {'ex_date': datetime(2024, 12, 16), 'amount': 0.47, 'currency': 'EUR', 'month': 12},
+            {'ex_date': datetime(2024, 9, 16), 'amount': 0.46, 'currency': 'EUR', 'month': 9},
+            {'ex_date': datetime(2024, 6, 17), 'amount': 0.45, 'currency': 'EUR', 'month': 6},
+            {'ex_date': datetime(2024, 3, 18), 'amount': 0.47, 'currency': 'EUR', 'month': 3},
         ],
         'upcoming': [],
         'source': 'Fallback (Ene 2025)'
     },
     'EHDV.DE': {
-        'annual_dividend': 1.52,
-        'dividend_yield': 4.82,
+        'annual_dividend': 1.48,
+        'dividend_yield': 4.69,
         'distribution_frequency': 'Trimestral',
         'dividend_months': [1, 4, 7, 10],
-        'last_dividend': 0.39,
+        'last_dividend': 0.37,
         'last_ex_date': '2024-10-17',
         'history': [
-            {'ex_date': datetime(2024, 10, 17), 'amount': 0.39, 'month': 10},
-            {'ex_date': datetime(2024, 7, 18), 'amount': 0.38, 'month': 7},
-            {'ex_date': datetime(2024, 4, 18), 'amount': 0.37, 'month': 4},
-            {'ex_date': datetime(2024, 1, 18), 'amount': 0.38, 'month': 1},
+            {'ex_date': datetime(2024, 10, 17), 'amount': 0.37, 'currency': 'EUR', 'month': 10},
+            {'ex_date': datetime(2024, 7, 18), 'amount': 0.38, 'currency': 'EUR', 'month': 7},
+            {'ex_date': datetime(2024, 4, 18), 'amount': 0.36, 'currency': 'EUR', 'month': 4},
+            {'ex_date': datetime(2024, 1, 18), 'amount': 0.37, 'currency': 'EUR', 'month': 1},
         ],
         'upcoming': [],
         'source': 'Fallback (Ene 2025)'
     },
     'IUSM.DE': {
-        'annual_dividend': 5.45,
-        'dividend_yield': 3.60,
+        'annual_dividend': 5.20,
+        'dividend_yield': 3.44,
         'distribution_frequency': 'Semestral',
         'dividend_months': [4, 10],
-        'last_dividend': 2.78,
+        'last_dividend': 2.65,
         'last_ex_date': '2024-10-10',
         'history': [
-            {'ex_date': datetime(2024, 10, 10), 'amount': 2.78, 'month': 10},
-            {'ex_date': datetime(2024, 4, 11), 'amount': 2.67, 'month': 4},
-            {'ex_date': datetime(2023, 10, 12), 'amount': 2.58, 'month': 10},
-            {'ex_date': datetime(2023, 4, 13), 'amount': 2.45, 'month': 4},
+            {'ex_date': datetime(2024, 10, 10), 'amount': 2.65, 'currency': 'EUR', 'month': 10},
+            {'ex_date': datetime(2024, 4, 11), 'amount': 2.55, 'currency': 'EUR', 'month': 4},
+            {'ex_date': datetime(2023, 10, 12), 'amount': 2.48, 'currency': 'EUR', 'month': 10},
+            {'ex_date': datetime(2023, 4, 13), 'amount': 2.40, 'currency': 'EUR', 'month': 4},
         ],
         'upcoming': [],
         'source': 'Fallback (Ene 2025)'
     },
     'JNKE.MI': {
-        'annual_dividend': 2.85,
-        'dividend_yield': 5.47,
+        'annual_dividend': 2.72,
+        'dividend_yield': 5.22,
         'distribution_frequency': 'Semestral',
         'dividend_months': [6, 12],
-        'last_dividend': 1.45,
+        'last_dividend': 1.38,
         'last_ex_date': '2024-12-12',
         'history': [
-            {'ex_date': datetime(2024, 12, 12), 'amount': 1.45, 'month': 12},
-            {'ex_date': datetime(2024, 6, 13), 'amount': 1.40, 'month': 6},
-            {'ex_date': datetime(2023, 12, 14), 'amount': 1.38, 'month': 12},
-            {'ex_date': datetime(2023, 6, 15), 'amount': 1.35, 'month': 6},
+            {'ex_date': datetime(2024, 12, 12), 'amount': 1.38, 'currency': 'EUR', 'month': 12},
+            {'ex_date': datetime(2024, 6, 13), 'amount': 1.34, 'currency': 'EUR', 'month': 6},
+            {'ex_date': datetime(2023, 12, 14), 'amount': 1.32, 'currency': 'EUR', 'month': 12},
+            {'ex_date': datetime(2023, 6, 15), 'amount': 1.28, 'currency': 'EUR', 'month': 6},
         ],
         'upcoming': [],
         'source': 'Fallback (Ene 2025)'
     }
 }
+
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_all_dividend_data():
@@ -471,21 +522,22 @@ def get_all_dividend_data():
     scraping_status = {}
     
     for ticker, cfg in PORTFOLIO_CONFIG.items():
+        digrin_ticker = DIGRIN_TICKER_MAP.get(ticker, ticker)
+        
         # Intentar scraping de digrin.com
-        scraped_data = scrape_digrin_dividends(ticker)
+        scraped_data = scrape_digrin_dividends(ticker, digrin_ticker)
         
         # Verificar si el scraping fue exitoso
-        if scraped_data.get('annual_dividend', 0) > 0 and scraped_data.get('history'):
+        if scraped_data.get('annual_dividend', 0) > 0 and len(scraped_data.get('history', [])) > 0:
             dividend_data[ticker] = scraped_data
             scraping_status[ticker] = scraped_data.get('source', 'digrin.com')
         else:
             # Usar datos de respaldo
             fallback = FALLBACK_DIVIDENDS.get(ticker, {})
             if fallback:
-                dividend_data[ticker] = fallback
+                dividend_data[ticker] = fallback.copy()
                 scraping_status[ticker] = f"Fallback - {scraped_data.get('source', 'scraping falló')}"
             else:
-                # Sin datos disponibles
                 dividend_data[ticker] = {
                     'annual_dividend': 0,
                     'dividend_yield': 0,
@@ -503,7 +555,6 @@ def get_all_dividend_data():
 def get_dividends_from_date(dividend_data, start_date):
     """
     Filtra y proyecta dividendos desde la fecha de inicio.
-    Calcula dividendos del primer año parcial y proyecciones futuras.
     """
     filtered_data = {}
     start_dt = datetime.combine(start_date, datetime.min.time())
@@ -522,30 +573,27 @@ def get_dividends_from_date(dividend_data, start_date):
         future_dividends = []
         if history:
             for div in history:
-                if div['ex_date'] > start_dt:
+                div_date = div['ex_date'] if isinstance(div['ex_date'], datetime) else datetime.combine(div['ex_date'], datetime.min.time())
+                if div_date > start_dt:
                     future_dividends.append(div)
         
         # Meses de dividendo que quedan después de la fecha de compra en el primer año
         remaining_months_first_year = [m for m in div_months if m > start_month]
         
-        # Calcular dividendo proporcional para el primer año
         if div_months:
             payments_per_year = len(div_months)
             remaining_payments_first_year = len(remaining_months_first_year)
             
             annual_div = data.get('annual_dividend', 0)
             
-            # Calcular dividendo promedio por pago basado en historial
-            if history:
-                recent_history = [d for d in history if d['ex_date'] >= (today - timedelta(days=400))]
-                if recent_history:
-                    div_per_payment = sum(d['amount'] for d in recent_history) / len(recent_history)
-                else:
-                    div_per_payment = annual_div / payments_per_year if payments_per_year > 0 else 0
+            # Calcular dividendo promedio por pago
+            if history and len(history) >= payments_per_year:
+                # Usar los últimos pagos del historial
+                recent_payments = history[:payments_per_year]
+                div_per_payment = sum(d['amount'] for d in recent_payments) / len(recent_payments)
             else:
                 div_per_payment = annual_div / payments_per_year if payments_per_year > 0 else 0
             
-            # Dividendo del primer año parcial
             first_year_dividend = div_per_payment * remaining_payments_first_year
             
             filtered['first_year_dividend'] = first_year_dividend
@@ -637,6 +685,7 @@ def calculate_metrics(series, capital_inicial):
         
     return cagr, max_dd, sharpe, dd
 
+
 # --- 5. CARGAR DATOS ---
 with st.spinner('Cargando datos de dividendos desde digrin.com...'):
     DIVIDEND_DATA, SCRAPING_STATUS = get_all_dividend_data()
@@ -647,7 +696,6 @@ with st.sidebar:
     
     capital = st.number_input("Capital Inicial (€)", value=13000, step=500)
     
-    # Fecha de inicio por defecto: 1 de diciembre de 2025
     start_date = st.date_input(
         "Fecha Inicio Inversión", 
         value=FECHA_COMPRA,
@@ -693,7 +741,6 @@ with st.sidebar:
 # --- 7. LÓGICA PRINCIPAL ---
 st.title("Dashboard de Cartera de Inversión")
 
-# Mostrar fecha de inicio
 st.caption(f"📅 Fecha de inicio de inversión: **{start_date.strftime('%d/%m/%Y')}** | 💰 Capital inicial: **€{capital:,.0f}**")
 
 benchmark_ticker = None
@@ -702,7 +749,6 @@ if custom_benchmark.strip():
 elif BENCHMARK_OPTIONS[benchmark_selection]:
     benchmark_ticker = BENCHMARK_OPTIONS[benchmark_selection]
 
-# Filtrar dividendos desde la fecha de compra
 DIVIDEND_DATA_FILTERED = get_dividends_from_date(DIVIDEND_DATA, start_date)
 
 tab1, tab2, tab3 = st.tabs(["📈 Rendimiento", "📅 Calendario de Dividendos", "💶 Importes en España"])
@@ -933,20 +979,20 @@ with tab1:
 with tab2:
     st.subheader("📅 Calendario de Dividendos")
     
-    # Info sobre fecha de inicio
     st.info(f"📅 Mostrando dividendos desde la fecha de compra: **{start_date.strftime('%d/%m/%Y')}**")
     
-    with st.expander("🔍 Estado de fuentes de datos (digrin.com)"):
+    with st.expander("🔍 Estado de fuentes de datos (digrin.com)", expanded=False):
         status_data = []
         for ticker, status in SCRAPING_STATUS.items():
             div_data = DIVIDEND_DATA.get(ticker, {})
+            digrin_ticker = DIGRIN_TICKER_MAP.get(ticker, ticker)
             last_div = div_data.get('last_dividend', 0)
             last_date = div_data.get('last_ex_date', 'N/A')
             num_records = len(div_data.get('history', []))
             
             status_data.append({
                 'ETF': ticker,
-                'ISIN': PORTFOLIO_CONFIG[ticker]['isin'],
+                'Digrin ID': digrin_ticker,
                 'Fuente': status,
                 'Último Div.': f"€{last_div:.4f}",
                 'Fecha': last_date,
@@ -963,7 +1009,6 @@ with tab2:
     meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
     start_month = start_date.month
     
-    dividend_calendar = []
     monthly_totals = {i: 0 for i in range(1, 13)}
     total_bruto = 0
     total_bruto_first_year = 0
@@ -981,33 +1026,13 @@ with tab2:
         
         payments_per_year = len(div_months) if div_months else 1
         if div_per_payment == 0:
-            div_per_payment = annual_div / payments_per_year if payments_per_year > 0 else 0
+            div_per_payment = div_per_share / payments_per_year if payments_per_year > 0 else 0
         
-        yield_on_cost = (div_per_share / cfg['buy_price']) * 100 if cfg['buy_price'] > 0 else 0
+        payment_total = div_per_payment * cfg['shares']
         
-        row = {
-            'ETF': ticker,
-            'Nombre': cfg['name'],
-            'Acciones': cfg['shares'],
-            'Div/Acc': f"€{div_per_share:.2f}",
-            'Yield': f"{yield_on_cost:.1f}%",
-        }
-        
-        for i, mes in enumerate(meses, 1):
-            if i in div_months:
-                payment_amount = div_per_payment * cfg['shares']
-                # Marcar si el mes es después de la fecha de compra
-                if i > start_month or start_date.year < datetime.now().year:
-                    row[mes] = f"€{payment_amount:.2f}"
-                    monthly_totals[i] += payment_amount
-                else:
-                    row[mes] = f"(€{payment_amount:.2f})"  # Entre paréntesis = no cobrado este año
-            else:
-                row[mes] = "-"
-        
-        row['Total Anual'] = f"€{annual_div:.2f}"
-        row['1er Año'] = f"€{first_year_div * cfg['shares']:.2f}"
-        dividend_calendar.append(row)
+        for month in div_months:
+            if month > start_month or start_date.year < datetime.now().year:
+                monthly_totals[month] += payment_total
     
     total_retencion = total_bruto * RETENCION_ESPANA
     total_neto = total_bruto - total_retencion
@@ -1026,32 +1051,38 @@ with tab2:
     st.markdown("---")
     
     # Historial de dividendos reciente
-    st.markdown("### 📜 Historial Reciente de Dividendos (desde digrin.com)")
+    st.markdown("### 📜 Historial Reciente de Dividendos")
     
     history_data = []
     for ticker, cfg in PORTFOLIO_CONFIG.items():
         div_data = DIVIDEND_DATA.get(ticker, {})
-        history = div_data.get('history', [])[:8]  # Últimos 8 dividendos
+        history = div_data.get('history', [])[:6]
         
         for div in history:
+            ex_date = div['ex_date']
+            if isinstance(ex_date, datetime):
+                date_str = ex_date.strftime('%Y-%m-%d')
+            else:
+                date_str = str(ex_date)
+            
             history_data.append({
                 'ETF': ticker,
-                'Fecha Ex-Div': div['ex_date'].strftime('%Y-%m-%d'),
+                'Fecha Ex-Div': date_str,
                 'Importe/Acc': f"€{div['amount']:.4f}",
-                'Total': f"€{div['amount'] * cfg['shares']:.2f}",
+                'Total Bruto': f"€{div['amount'] * cfg['shares']:.2f}",
                 'Neto España': f"€{div['amount'] * cfg['shares'] * 0.81:.2f}"
             })
     
     if history_data:
         df_history = pd.DataFrame(history_data)
         df_history = df_history.sort_values('Fecha Ex-Div', ascending=False)
-        st.dataframe(df_history.head(20), use_container_width=True, hide_index=True)
+        st.dataframe(df_history.head(25), use_container_width=True, hide_index=True)
     else:
         st.warning("No hay historial de dividendos disponible")
     
     st.markdown("---")
     
-    # Tabla de dividendos
+    # Detalle por ETF
     st.markdown("### 📋 Detalle por ETF")
     
     div_detail = []
@@ -1066,12 +1097,12 @@ with tab2:
         
         div_detail.append({
             'ETF': ticker,
-            'Nombre': cfg['name'],
+            'Nombre': cfg['name'][:25],
             'Frecuencia': frequency,
             'Meses pago': ', '.join([meses[m-1] for m in div_months]) if div_months else 'N/A',
             'Div/Acc Anual': f"€{div_per_share:.2f}",
             'Total Anual': f"€{annual_div:.2f}",
-            f'1er Año': f"€{first_year_div:.2f}",
+            '1er Año': f"€{first_year_div:.2f}",
             'Yield': f"{yield_on_cost:.2f}%",
         })
     
@@ -1079,7 +1110,7 @@ with tab2:
     
     st.markdown("---")
     
-    # Calendario visual - solo meses relevantes
+    # Calendario visual
     st.markdown(f"### 📆 Distribución Mensual (desde {meses[start_month-1]} {start_date.year})")
     
     cols = st.columns(6)
@@ -1089,7 +1120,6 @@ with tab2:
             total_mes = monthly_totals[mes_num]
             neto_mes = total_mes * (1 - RETENCION_ESPANA)
             
-            # Determinar si el mes está activo (después de la fecha de compra)
             is_future = mes_num > start_month or start_date.year < datetime.now().year
             
             if total_mes > 0 and is_future:
@@ -1114,35 +1144,6 @@ with tab2:
                 <div style="color:#64748b; font-size:0.75rem;">Neto: €{neto_mes:.2f}</div>
             </div>
             """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Próximos dividendos
-    st.markdown("### 🔮 Próximos Dividendos Esperados")
-    
-    upcoming_divs = []
-    today = datetime.now()
-    
-    for ticker, cfg in PORTFOLIO_CONFIG.items():
-        div_data = DIVIDEND_DATA.get(ticker, {})
-        upcoming = div_data.get('upcoming', [])
-        
-        for div in upcoming:
-            if div['ex_date'] > today:
-                upcoming_divs.append({
-                    'Fecha Ex-Div': div['ex_date'].strftime('%Y-%m-%d'),
-                    'ETF': ticker,
-                    'Importe/Acc': f"€{div['amount']:.4f}",
-                    'Total Bruto': f"€{div['amount'] * cfg['shares']:.2f}",
-                    'Neto España': f"€{div['amount'] * cfg['shares'] * 0.81:.2f}"
-                })
-    
-    if upcoming_divs:
-        df_upcoming = pd.DataFrame(upcoming_divs)
-        df_upcoming = df_upcoming.sort_values('Fecha Ex-Div')
-        st.dataframe(df_upcoming, use_container_width=True, hide_index=True)
-    else:
-        st.info("📅 No hay dividendos futuros confirmados en este momento")
     
     st.markdown("---")
     
@@ -1212,7 +1213,7 @@ with tab3:
         
         spain_data.append({
             'ETF': ticker,
-            'Nombre': cfg['name'],
+            'Nombre': cfg['name'][:20],
             'Domicilio': 'Irlanda' if cfg['isin'].startswith('IE') else 'P. Bajos',
             'Bruto Anual': f"€{annual_bruto:.2f}",
             'Ret. 19%': f"€{ret_espana:.2f}",
@@ -1254,7 +1255,6 @@ with tab3:
         payment_total = div_per_payment * cfg['shares']
         
         for month in div_months:
-            # Solo contar meses después de la fecha de compra
             if month > start_month or start_date.year < datetime.now().year:
                 monthly_spain[month]['bruto'] += payment_total
                 monthly_spain[month]['neto'] += payment_total * (1 - RETENCION_ESPANA)
@@ -1294,7 +1294,6 @@ with tab3:
     
     st.markdown("---")
     
-    # Resumen
     avg_mensual_neto = total_neto_esp / 12
     yield_neto = (total_neto_esp / CAPITAL_INVERTIDO) * 100
     
